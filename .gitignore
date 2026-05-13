@@ -1,0 +1,9 @@
+data/
+results/
+*.fastq*
+*.fasta
+*.bam
+*.bai
+*.vcf*
+__pycache__/
+*.pyc

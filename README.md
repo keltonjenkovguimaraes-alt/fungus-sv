@@ -233,7 +233,7 @@ This pipeline builds upon:
 
 ## 📄 Citation
 
-> Guimarães, K.J. et al. (2026). FUNGUS-SV: A benchmark-free structural variant discovery pipeline for non-model haploid fungi using PacBio HiFi sequencing. *In preparation*.
+> Guimarães, K.H.A; Philippsen H.K., et al. (2026). FUNGUS-SV: A benchmark-free structural variant discovery pipeline for non-model haploid fungi using PacBio HiFi sequencing. *In preparation*.
 
 ---
 

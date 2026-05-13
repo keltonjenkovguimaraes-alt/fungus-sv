@@ -1,0 +1,17 @@
+Metric	Value
+Species	Sporothrix schenckii NBRC32961
+Sequencing	PacBio Revio HiFi
+Total reads	197,830
+Mean coverage	58x
+Reference size	32.4 Mb (16 contigs)
+Mapping rate	99.91%
+SV callers used	pbsv, Sniffles2, cuteSV
+Total raw SV calls	1,915
+Consensus SVs (≥2 callers)	275
+High-confidence SVs (3 callers)	174
+Deletions	269 (172 high-conf)
+Inversions	5 (2 high-conf)
+Duplications	1
+SV size range	29 bp – 139 kb
+Median SV size	71 bp
+Genes with HIGH-impact SVs	83

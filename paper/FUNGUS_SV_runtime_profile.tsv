@@ -1,0 +1,13 @@
+Step	Tool	CPU Time (s)	Wall Time (s)	Peak Memory (GB)	Notes
+Alignment	minimap2	2741	346	4.25	197,830 reads, 16 threads
+Alignment	samtools sort	~120	~60	~2.00	Sorting 199k alignments
+SV Calling	pbsv	~180	~180	~4.00	Most time-consuming caller
+SV Calling	Sniffles2	~15	4.7	~2.00	Multi-threaded, very fast
+SV Calling	cuteSV	~12	4.7	~1.50	Comparable to Sniffles2
+ICB Consensus	build_consensus.py	<1	<1	<0.10	Pure Python, instantaneous
+LAR	Flye (139 kb INV)	~35	64	~1.00	850 reads, 70× local cov
+LAR	Flye (37 kb INV)	~30	~45	~0.80	396 reads, 65× local cov
+LAR	Flye (8.6 kb DEL)	~20	~30	~0.50	114 reads, 30× local cov
+Annotation	annotate_svs.py	<5	<5	<0.50	62,088 features parsed
+SNV Calling	Longshot	~240	~240	~2.00	100,525 variants
+Total	FUNGUS-SV end-to-end	~3400	~1100	~4.25	~18 min wall time

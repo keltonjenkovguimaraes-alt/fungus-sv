@@ -1,0 +1,108 @@
+"""
+FUNGUS-SV: A novel pipeline for structural variant discovery
+in non-model haploid fungi using PacBio HiFi sequencing.
+
+Innovations:
+- ICB: Iterative Consensus Builder (benchmark-free validation)
+- LAR: Local Assembly Refinement (hybrid alignment-assembly)
+- Pan-Sporothrix database generation
+"""
+
+configfile: "config/config_pacbio.yaml"
+
+SAMPLES = config["samples"]
+
+rule all:
+    """Generate all outputs for FUNGUS-SV pipeline."""
+    input:
+        expand("results/qc/{sample}_fastqc.html", sample=SAMPLES),
+        expand("results/alignment/{sample}.sorted.bam.bai", sample=SAMPLES),
+        expand("results/variants/consensus/{sample}.consensus_svs.vcf.gz", sample=SAMPLES),
+        expand("results/variants/refined/{sample}.refined_svs.vcf.gz", sample=SAMPLES),
+        expand("results/annotation/{sample}.annotated.tsv", sample=SAMPLES),
+
+
+rule fastqc:
+    """Quality control for PacBio HiFi reads."""
+    input:
+        fq = "data/raw/{sample}.fastq.gz"
+    output:
+        html = "results/qc/{sample}_fastqc.html"
+    threads: 2
+    shell:
+        "fastqc -t {threads} -o results/qc/ {input.fq}"
+
+
+rule minimap2_align:
+    """Align PacBio HiFi reads to reference genome."""
+    input:
+        fq = "data/raw/{sample}.fastq.gz",
+        ref = "data/reference/reference.mmi"
+    output:
+        bam = "results/alignment/{sample}.sorted.bam",
+        bai = "results/alignment/{sample}.sorted.bam.bai"
+    threads: 8
+    shell:
+        """
+        minimap2 -t {threads} -ax map-hifi {input.ref} {input.fq} \
+        | samtools sort -@ 4 -o {output.bam} - \
+        && samtools index {output.bam}
+        """
+
+
+rule icb_consensus:
+    """Run multi-caller consensus SV detection (ICB innovation)."""
+    input:
+        bam = "results/alignment/{sample}.sorted.bam",
+        ref = "data/reference/reference.fasta"
+    output:
+        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf.gz"
+    threads: 8
+    shell:
+        """
+        python fungus_sv/core/icb.py \
+            --bam {input.bam} \
+            --reference {input.ref} \
+            --output results/variants/consensus/ \
+            --callers pbsv sniffles2 cutesv \
+            --min-callers 2 \
+            --iterations 3 \
+            --haploid
+        """
+
+
+rule lar_refine:
+    """Refine SV breakpoints via local assembly (LAR innovation)."""
+    input:
+        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf.gz",
+        bam = "results/alignment/{sample}.sorted.bam",
+        ref = "data/reference/reference.fasta"
+    output:
+        refined = "results/variants/refined/{sample}.refined_svs.vcf.gz"
+    threads: 4
+    shell:
+        """
+        python fungus_sv/modules/local_assembly.py \
+            --consensus {input.consensus} \
+            --bam {input.bam} \
+            --reference {input.ref} \
+            --output {output.refined}
+        """
+
+
+rule vep_annotate:
+    """Annotate variants with functional predictions."""
+    input:
+        vcf = "results/variants/refined/{sample}.refined_svs.vcf.gz",
+        ref = "data/reference/reference.fasta",
+        gff = "data/reference/reference.gff"
+    output:
+        tsv = "results/annotation/{sample}.annotated.tsv"
+    shell:
+        """
+        vep -i {input.vcf} \
+            --gff {input.gff} \
+            --fasta {input.ref} \
+            -o {output.tsv} \
+            --tab --force_overwrite --no_stats
+        """

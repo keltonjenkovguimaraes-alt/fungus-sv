@@ -1,0 +1,23 @@
+# FUNGUS-SV Configuration
+# Sporothrix schenckii NBRC32961 analysis
+
+samples:
+  - DRR631664
+
+reference_genome: "data/reference/reference.fasta"
+reference_gff: "data/reference/reference.gff"
+
+# ICB parameters
+icb:
+  callers: ["pbsv", "sniffles2", "cutesv"]
+  min_callers: 2
+  iterations: 3
+  haploid: true
+
+# LAR parameters
+lar:
+  local_window: 5000  # bp around breakpoint
+  min_support: 3      # minimum reads for assembly
+  
+output_dir: "results"
+threads: 8

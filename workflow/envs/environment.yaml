@@ -1,0 +1,14 @@
+name: snp_svant_pacbio
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - snakemake>=8.0
+  - minimap2=2.26
+  - samtools=1.19
+  - bcftools=1.19
+  - tabix=1.11
+  - fastqc=0.12.1
+  - multiqc=1.19

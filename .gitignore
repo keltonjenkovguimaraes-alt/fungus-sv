@@ -1,9 +1,9 @@
-data/
+
+# Large data files - do not commit
 results/
-*.fastq*
-*.fasta
-*.bam
-*.bai
-*.vcf*
+data/reference/
+*.jf
+
+# Python cache
 __pycache__/
 *.pyc

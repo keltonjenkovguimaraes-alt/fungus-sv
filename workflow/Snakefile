@@ -1,25 +1,28 @@
 """
-FUNGUS-SV: A novel pipeline for structural variant discovery
-in non-model haploid fungi using PacBio HiFi sequencing.
+FUNGUS-SV: Structural variant discovery and triangulation-based
+prioritization for non-model haploid fungi using PacBio HiFi reads.
 
-Innovations:
-- ICB: Iterative Consensus Builder (benchmark-free validation)
-- LAR: Local Assembly Refinement (hybrid alignment-assembly)
-- Pan-Sporothrix database generation
+Two-phase architecture:
+  Phase 1 (Prediction): ICB consensus from 3 SV callers
+  Phase 2 (Validation): VALID-SV triangulation across 5 evidence layers
 """
 
-configfile: "config/config_pacbio.yaml"
+configfile: "config/config.yaml"
 
 SAMPLES = config["samples"]
 
+
 rule all:
-    """Generate all outputs for FUNGUS-SV pipeline."""
+    """Generate all outputs."""
     input:
-        expand("results/qc/{sample}_fastqc.html", sample=SAMPLES),
+        # Phase 1: Prediction
         expand("results/alignment/{sample}.sorted.bam.bai", sample=SAMPLES),
-        expand("results/variants/consensus/{sample}.consensus_svs.vcf.gz", sample=SAMPLES),
+        expand("results/variants/consensus/{sample}.consensus_svs.vcf", sample=SAMPLES),
         expand("results/variants/refined/{sample}.refined_svs.vcf.gz", sample=SAMPLES),
         expand("results/annotation/{sample}.annotated.tsv", sample=SAMPLES),
+        # Phase 2: Validation
+        expand("results/validation/{sample}/validation_summary.txt", sample=SAMPLES),
+        expand("results/validation/{sample}/validation_results.json", sample=SAMPLES),
 
 
 rule fastqc:
@@ -51,30 +54,31 @@ rule minimap2_align:
 
 
 rule icb_consensus:
-    """Run multi-caller consensus SV detection (ICB innovation)."""
+    """Phase 1: Multi-caller consensus SV detection (ICB)."""
     input:
         bam = "results/alignment/{sample}.sorted.bam",
         ref = "data/reference/reference.fasta"
     output:
-        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf.gz"
+        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf"
     threads: 8
     shell:
         """
-        python fungus_sv/core/icb.py \
-            --bam {input.bam} \
+        python fungus_sv/core/build_consensus.py \
+            --vcfs results/variants/pbsv/{wildcards.sample}.vcf \
+                   results/variants/sniffles2/{wildcards.sample}.vcf \
+                   results/variants/cutesv/{wildcards.sample}.vcf \
+            --caller-names pbsv Sniffles2 cuteSV \
+            --output {output.consensus} \
             --reference {input.ref} \
-            --output results/variants/consensus/ \
-            --callers pbsv sniffles2 cutesv \
             --min-callers 2 \
-            --iterations 3 \
-            --haploid
+            --min-overlap 0.5
         """
 
 
 rule lar_refine:
-    """Refine SV breakpoints via local assembly (LAR innovation)."""
+    """Refine SV breakpoints via local assembly (LAR)."""
     input:
-        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf.gz",
+        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
         bam = "results/alignment/{sample}.sorted.bam",
         ref = "data/reference/reference.fasta"
     output:
@@ -90,6 +94,29 @@ rule lar_refine:
         """
 
 
+rule validate_triangulation:
+    """Phase 2: VALID-SV triangulation across 5 evidence layers."""
+    input:
+        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
+        bam = "results/alignment/{sample}.sorted.bam",
+        ref = "data/reference/reference.fasta",
+        fq = "data/raw/{sample}.fastq.gz"
+    output:
+        summary = "results/validation/{sample}/validation_summary.txt",
+        json = "results/validation/{sample}/validation_results.json"
+    threads: 8
+    shell:
+        """
+        python -m valid_sv.run_validation \
+            --consensus-vcf {input.consensus} \
+            --bam {input.bam} \
+            --reference {input.ref} \
+            --fastq {input.fq} \
+            --output results/validation/{wildcards.sample}/ \
+            --min-support 1
+        """
+
+
 rule vep_annotate:
     """Annotate variants with functional predictions."""
     input:
@@ -100,9 +127,8 @@ rule vep_annotate:
         tsv = "results/annotation/{sample}.annotated.tsv"
     shell:
         """
-        vep -i {input.vcf} \
+        python fungus_sv/core/annotate_svs.py \
+            --vcf {input.vcf} \
             --gff {input.gff} \
-            --fasta {input.ref} \
-            -o {output.tsv} \
-            --tab --force_overwrite --no_stats
+            --output {output.tsv}
         """

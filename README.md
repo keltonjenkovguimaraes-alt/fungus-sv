@@ -132,120 +132,35 @@ This demonstrates why LAR is essential: alignment-based callers systematically o
 
 ---
 
+
+---
+
+## 📈 Key Figures
+
+### Figure 1: Iterative Consensus Builder (ICB) Results
+
+![Figure 1: ICB Overview](paper/figures/figure1_ICB_overview.png)
+
+**Panel A:** Raw structural variant calls per caller. **Panel B:** Consensus confidence levels showing 12% high-confidence (3-caller) SVs. **Panel C:** Size distribution of 275 consensus SVs. **Panel D:** SV type distribution.
+
+### Figure 2: Local Assembly Refinement (LAR)
+
+![Figure 2: LAR Refinement](paper/figures/figure2_LAR_refinement.png)
+
+**Panel A:** Comparison of the putative 139 kb inversion (ICB) vs. the 652 bp inversion confirmed by local assembly (LAR). **Panel B:** LAR assembly metrics including 99.85% identity.
+
+### Figure 3: Pan-Sporothrix SV Atlas
+
+![Figure 3: Pan-Atlas](paper/figures/figure3_pan_atlas.png)
+
+**Panel A:** Conservation of SV-affected genes between *S. schenckii* and *S. brasiliensis* (86.7% conserved). **Panel B:** Functional categories of genes affected by structural variants.
+
+### Supplementary Figure: Caller Overlap
+
+![Supplementary: Venn Diagram](paper/figures/supp_figure_venn.png)
+
+Venn diagram showing overlap between the three SV callers. Only 174 of 1,915 raw calls (9.1%) were detected by all three callers, highlighting the importance of multi-caller consensus.
+
+---
+
 ## ⚡ Quick Start
-
-### Prerequisites
-
-- Linux (Ubuntu 20.04+ recommended)
-- ≥32 GB RAM, ≥8 CPU cores
-- Conda or Mamba
-- PacBio HiFi reads at ≥30× coverage
-
-### Installation
-
-```bash
-git clone https://github.com/keltonjenkovguimaraes-alt/fungus-sv.git
-cd fungus-sv
-conda env create -f workflow/envs/environment.yaml
-conda activate snp_svant_pacbio
-```
-
-### Prepare Your Data
-
-```
-data/raw/your_sample.fastq.gz    # PacBio HiFi reads
-data/reference/reference.fasta    # Reference genome
-data/reference/reference.gff      # Gene annotations
-```
-
-### Configure
-
-Edit `config/config.yaml` with your sample name and file paths.
-
-### Run
-
-```bash
-snakemake -s workflow/Snakefile --cores 8
-```
-
----
-
-## 📁 Repository Structure
-
-```
-fungus-sv/
-├── README.md                      # This file
-├── LICENSE                        # MIT License
-├── workflow/
-│   ├── Snakefile                  # Main Snakemake pipeline
-│   └── envs/environment.yaml      # Conda environment
-├── fungus_sv/
-│   ├── core/
-│   │   ├── icb.py                 # Iterative Consensus Builder
-│   │   ├── build_consensus.py     # Consensus scoring algorithm
-│   │   └── annotate_svs.py        # Custom SV annotator
-│   └── modules/
-│       └── local_assembly.py      # LAR module
-├── config/config.yaml             # Pipeline configuration
-├── docs/methods.md                # Detailed methods
-└── paper/                         # Manuscript directory
-```
-
----
-
-## 🔬 Methods Summary
-
-### ICB: Iterative Consensus Builder
-
-- **Step 1**: Run pbsv, Sniffles2, and cuteSV on aligned BAM
-- **Step 2**: Parse all VCFs, cluster SVs by reciprocal overlap (≥0.5)
-- **Step 3**: Score clusters by caller agreement (1-3 callers)
-- **Step 4**: Output consensus VCF with SUPPORT and CALLERS tags
-- **Step 5**: Iteratively upgrade 2-caller SVs matching truth profile
-
-### LAR: Local Assembly Refinement
-
-- **Step 1**: Extract reads spanning SV ±5 kb (samtools)
-- **Step 2**: Local de novo assembly (Flye, `--pacbio-hifi`)
-- **Step 3**: Align assembly to reference (minimap2, `-cx asm5`)
-- **Step 4**: Extract refined breakpoints from PAF
-
-### Pan-Atlas
-
-- Ortholog matching via locus tag conversion (SPSK_ → SPBR_)
-- Classification: Conserved (ortholog present) vs. Species-specific
-- Functional annotation from GFF mRNA product fields
-
----
-
-## 📚 References
-
-This pipeline builds upon:
-
-1. **Gunasekaran et al. (2024)** — SNP-SVant: computational workflow for organisms lacking benchmarked variants. *Current Protocols*, 4, e1046.
-2. **Holt et al. (2024)** — HiPhase: jointly phasing small, structural, and tandem repeat variants from HiFi sequencing. *Bioinformatics*, 40, btae042.
-3. **Liu et al. (2024)** — Tradeoffs in alignment and assembly-based methods for structural variant detection with long-read sequencing data. *Nature Communications*, 15, 2447.
-4. **Hops et al. (2025)** — HiFi long-read genomes for difficult-to-detect, clinically relevant variants. *American Journal of Human Genetics*, 112, 450-456.
-5. **Teixeira et al. (2014)** — Comparative genomics of *Sporothrix schenckii* and *Sporothrix brasiliensis*. *BMC Genomics*, 15, 943.
-6. **Hartmann et al. (2022)** — vembrane: filtering and transforming VCF/BCF files. *Bioinformatics*, 38, 5300-5302.
-
----
-
-## 📄 Citation
-
-> Guimarães, K.J. et al. (2026). FUNGUS-SV: A benchmark-free structural variant discovery pipeline for non-model haploid fungi using PacBio HiFi sequencing. *In preparation*.
-
----
-
-## 📧 Contact
-
-**Kelton Jenkov Guimarães**
-GitHub: [@keltonjenkovguimaraes-alt](https://github.com/keltonjenkovguimaraes-alt)
-
----
-
-## 🤝 Acknowledgments
-
-Built for the *Sporothrix* research community and all scientists working on non-model fungal pathogens.
-
-*If this pipeline helps your research, please star ⭐ the repository and cite the paper.*

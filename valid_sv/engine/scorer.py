@@ -119,9 +119,9 @@ class TriangulationResult:
 # k-mer spectrum has high weight (completely alignment-free)
 # These should be CALIBRATED with synthetic benchmarks
 DEFAULT_WEIGHTS = {
-    'alignment_consensus': 0.10,
-    'local_assembly': 0.25,
-    'depth_signature': 0.20,
+    'alignment_consensus': 0.0,    # Excluded: circular (ICB output = validation input)
+    'local_assembly': 0.30,
+    'depth_signature': 0.25,
     'kmer_spectrum': 0.25,
     'breakpoint_junction': 0.20,
 }
@@ -140,14 +140,18 @@ class TriangulationScorer:
     """
     
     def __init__(self, weights: Optional[Dict[str, float]] = None,
-                 calibration: Optional[Dict[str, float]] = None):
+                 calibration: Optional[Dict[str, float]] = None,
+                 include_consensus: bool = False):
         """
         Args:
             weights: Layer weights (default: DEFAULT_WEIGHTS)
             calibration: T-score to FDR mapping from benchmarks
+            include_consensus: If True, include alignment_consensus in T-score.
+                Default False to avoid circular validation (ICB output as input).
         """
         self.weights = weights or DEFAULT_WEIGHTS
         self.calibration = calibration or self._default_calibration()
+        self.include_consensus = include_consensus
     
     @staticmethod
     def _default_calibration() -> Dict[str, float]:
@@ -177,7 +181,9 @@ class TriangulationScorer:
         Returns:
             TriangulationResult with T-score and interpretation
         """
-        available_layers = [l for l in layer_results if l.available]
+        # Filter out alignment_consensus unless explicitly included (circular validation)
+        available_layers = [l for l in layer_results 
+                          if l.available and (self.include_consensus or l.layer_name != 'alignment_consensus')]
         
         if not available_layers:
             # No evidence at all

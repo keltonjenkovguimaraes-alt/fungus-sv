@@ -17,12 +17,13 @@ Architecture:
         ICB consensus → Candidate SV list
     
     Validation phase (VALID-SV):
-        Layer 1: ICB multi-caller agreement (pre-computed)
-        Layer 2: Local Assembly Refinement (LAR)
+        Layer 1: ICB multi-caller agreement (REPORTED, not scored - circular)
+        Layer 2: Local Assembly Refinement (LAR) — must be run separately
         Layer 3: Read-Depth Signature
         Layer 4: k-mer Spectrum Analysis
         Layer 5: Breakpoint Junction Analysis
-        → Triangulation Engine → T-score + Estimated FDR
+        Layer 6: Ploidy Confirmation (SNV het rate)
+        → Triangulation Engine → T-score + Confidence Estimate
 
 Author: VALID-SV / FUNGUS-SV
 Status: Development — NOT FOR PRODUCTION USE
@@ -41,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from valid_sv.evidence.layer_depth import analyze_depth_signature, DepthEvidence
 from valid_sv.evidence.layer_kmer import analyze_kmer_spectrum, KmerEvidence
 from valid_sv.evidence.layer_breakpoint import analyze_breakpoint_junctions, BreakpointEvidence
+from valid_sv.evidence.layer_ploidy import analyze_ploidy, run_longshot, PloidyEvidence
 from valid_sv.quality.triangulability import assess_triangulability, TriangulabilityReport
 from valid_sv.engine.scorer import (
     TriangulationScorer, LayerResult, TriangulationResult, TScoreTier
@@ -196,8 +198,8 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         icb_score = {1: 0.33, 2: 0.67, 3: 1.0}.get(sv['support'], 0.33)
         layer_results.append(LayerResult(
             "alignment_consensus", icb_score,
-            f"{sv['support']}/3 callers", True, 0.10,
-            f"ICB support: {sv['support']} callers"
+            f"{sv['support']}/3 callers", True, 0.0,  # Weight 0.0 = excluded from T-score
+            f"ICB support: {sv['support']} callers (reported but NOT used in T-score — circular)"
         ))
         
         # Layer 2: Local assembly — uses existing LAR results if available
@@ -206,10 +208,12 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         lar_available = any(l.layer_name == 'local_assembly' and l.available 
                            for l in triang.layers) if triang else False
         if lar_available:
+            # LAR must be run separately. Mark as unavailable until run.
+            # The LAR module is at: fungus_sv/modules/local_assembly.py
             layer_results.append(LayerResult(
-                "local_assembly", 0.50,  # Neutral until LAR is run
-                "pending LAR", True, 0.25,
-                "Run LAR separately for precise score"
+                "local_assembly", 0.0,
+                "not_run", False, 0.30,
+                "LAR NOT YET RUN — run fungus_sv/modules/local_assembly.py first"
             ))
         else:
             layer_results.append(LayerResult(
@@ -298,6 +302,28 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 "No BAM available"
             ))
         
+
+        # Layer 6: Ploidy confirmation (SNV het rate)
+        try:
+            ploidy_vcf = os.path.join(output_dir, 'longshot_snvs.vcf')
+            if os.path.exists(ploidy_vcf):
+                ploidy_result = analyze_ploidy(ploidy_vcf)
+            else:
+                # Run Longshot if VCF doesn't exist
+                run_longshot(bam_path, reference_path, ploidy_vcf)
+                ploidy_result = analyze_ploidy(ploidy_vcf)
+            
+            ploidy_score = ploidy_result.evidence_score if ploidy_result.is_haploid else 0.3
+            layer_results.append(LayerResult(
+                "ploidy_confirmation", ploidy_score,
+                f"het_rate={ploidy_result.het_rate:.3f}", True, 0.15,
+                ploidy_result.details
+            ))
+        except Exception as e:
+            layer_results.append(LayerResult(
+                "ploidy_confirmation", 0.0, "error", False, 0.15,
+                f"Ploidy analysis failed: {str(e)}"
+            ))
         # Score
         result = scorer.score(
             sv['id'], sv['svtype'], sv['chrom'],

@@ -190,3 +190,42 @@ if __name__ == '__main__':
     result = scorer.score("FUNGUS_SV_042", "DEL", "chr1", 4523100, 4531642, 3, test_layers)
     
     print(generate_report_card(result))
+
+
+def generate_size_stratified_summary(results: list) -> str:
+    """Generate summary broken down by SV size category."""
+    categories = {
+        'Tiny (<100 bp)': lambda r: r.sv_size < 100,
+        'Small (100-500 bp)': lambda r: 100 <= r.sv_size < 500,
+        'Medium (500-5000 bp)': lambda r: 500 <= r.sv_size < 5000,
+        'Large (>5000 bp)': lambda r: r.sv_size >= 5000,
+    }
+    
+    lines = []
+    lines.append("=" * 70)
+    lines.append("  SIZE-STRATIFIED VALIDATION SUMMARY")
+    lines.append("=" * 70)
+    lines.append(f"  {'Category':<25} {'N':>5} {'Mean T':>8} {'Triple':>8} {'Double':>8} {'Single':>8} {'Weak':>8}")
+    lines.append(f"  {'-'*70}")
+    
+    for cat_name, condition in categories.items():
+        subset = [r for r in results if condition(r)]
+        if not subset:
+            continue
+        
+        n = len(subset)
+        mean_t = sum(r.t_score for r in subset) / n
+        triple = sum(1 for r in subset if r.tier.name == 'TRIPLE_TRIANGULATED')
+        double = sum(1 for r in subset if r.tier.name == 'DOUBLE_CONFIRMED')
+        single = sum(1 for r in subset if r.tier.name == 'SINGLE_LINE')
+        weak = sum(1 for r in subset if r.tier.name in ('WEAK', 'CONTRADICTED'))
+        
+        lines.append(f"  {cat_name:<25} {n:>5} {mean_t:>8.3f} {triple:>8} {double:>8} {single:>8} {weak:>8}")
+    
+    lines.append("")
+    lines.append("  ⚠️  Tiny SVs (<100 bp) have limited orthogonal validation.")
+    lines.append("  Depth layer requires ≥50 bp. Breakpoint analysis may have reduced sensitivity.")
+    lines.append("  Interpret T-scores for tiny SVs with extra caution.")
+    lines.append("=" * 70)
+    
+    return '\n'.join(lines)

@@ -1,57 +1,73 @@
 # FUNGUS-SV Configuration
 # ========================
+# Two-phase pipeline: ICB prediction + VALID-SV triangulation
 
+# Sample identifiers
 samples:
   - DRR631664
 
+# Reference genome paths
 reference_genome: "data/reference/reference.fasta"
 reference_gff: "data/reference/reference.gff"
 
+# Phase 1: ICB Prediction parameters
 icb:
   callers: ["pbsv", "sniffles2", "cutesv"]
   min_callers: 2
   min_overlap: 0.5
   haploid: true
 
+# Phase 2: VALID-SV Triangulation parameters
 validation:
+  # Evidence layer weights (alignment_consensus = 0.0: excluded, circular)
   weights:
-    alignment_consensus: 0.0     # Excluded (circular)
+    alignment_consensus: 0.0    # NOT USED in T-score (circular validation)
     local_assembly: 0.30
     depth_signature: 0.25
     kmer_spectrum: 0.25
     breakpoint_junction: 0.20
     ploidy_confirmation: 0.15
 
+  # k-mer analysis
   kmer_size: 31
   kmer_db_dir: "results/validation/kmer_db"
-  depth_window: 50
+
+  # Depth signature (now works for ≥50bp)
+  depth_window: 100
   depth_flank: 2000
   depth_min_size: 50
 
+  # Breakpoint analysis
+  breakpoint_window: 500
+
+  # LAR parameters
   lar:
     flank_size: 2000
     min_reads: 10
-    max_svs: null
+    max_svs: null  # null = all SVs
 
-  breakpoint_window: 500
-
+  # Ploidy confirmation
   ploidy:
     enabled: true
     max_het_rate: 0.02
 
+  # FDR estimation (approximate — calibrate with spike_in)
   fdr_null_proportion: 0.30
 
+  # Triangulation thresholds
   tiers:
     triple_triangulated: 0.80
     double_confirmed: 0.60
     single_line: 0.40
     weak: 0.20
 
+  # Size-stratified reporting
   size_categories:
     tiny: [0, 100]
     small: [100, 500]
     medium: [500, 5000]
     large: [5000, 1000000]
 
+# Output
 output_dir: "results"
 threads: 8

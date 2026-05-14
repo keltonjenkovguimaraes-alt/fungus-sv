@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 Local Assembly Refinement (LAR) for SV validation.
-Extracts reads, runs Flye assembly, aligns back to refine breakpoints.
+===================================================
+Extracts reads from SV region, performs local assembly with Flye,
+and aligns assembly back to reference to refine breakpoints.
+
+Author: FUNGUS-SV
 """
 
 import subprocess
@@ -9,64 +13,73 @@ import os
 import sys
 import argparse
 import tempfile
-import re
 from pathlib import Path
 from typing import Optional, Tuple
 
 
 def extract_region_reads(bam_path: str, chrom: str, start: int, end: int,
                          flank: int = 2000, output_fastq: str = None) -> str:
-    """Extract reads overlapping an SV region from BAM."""
+    """
+    Extract reads overlapping an SV region from BAM.
+    """
     if output_fastq is None:
         output_fastq = f"{chrom}_{start}_{end}_reads.fastq"
     
     region = f"{chrom}:{max(0, start - flank)}-{end + flank}"
     
-    result = subprocess.run(
-        ['samtools', 'view', '-b', bam_path, region],
-        capture_output=True, timeout=120
-    )
+    cmd = [
+        'samtools', 'view', '-b', bam_path, region
+    ]
+    
+    # Convert to FASTQ
+    result = subprocess.run(cmd, capture_output=True, timeout=120)
     
     if result.returncode != 0 or len(result.stdout) == 0:
         raise RuntimeError(f"No reads extracted from {region}")
     
-    with tempfile.NamedTemporaryFile(suffix='.bam', delete=False) as tmp:
-        tmp.write(result.stdout)
-        tmp_path = tmp.name
+    # Write BAM to temp file, convert to FASTQ
+    with tempfile.NamedTemporaryFile(suffix='.bam', delete=False) as tmp_bam:
+        tmp_bam.write(result.stdout)
+        tmp_bam_path = tmp_bam.name
     
-    subprocess.run(
-        ['samtools', 'fastq', '-0', output_fastq, tmp_path],
-        check=True, timeout=60
-    )
-    os.unlink(tmp_path)
+    subprocess.run([
+        'samtools', 'fastq', '-0', output_fastq, tmp_bam_path
+    ], check=True, timeout=60)
+    
+    os.unlink(tmp_bam_path)
     
     return output_fastq
 
 
 def local_assemble(fastq_path: str, output_dir: str, threads: int = 4) -> str:
-    """Run Flye local assembly."""
+    """
+    Run Flye local assembly on extracted reads.
+    """
     os.makedirs(output_dir, exist_ok=True)
     
     cmd = [
         'flye', '--pacbio-hifi', fastq_path,
         '--out-dir', output_dir,
         '--threads', str(threads),
-        '--genome-size', '50k',
+        '--genome-size', '50k',  # Small for local assembly
         '--iterations', '2'
     ]
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    
     assembly_path = os.path.join(output_dir, 'assembly.fasta')
     
     if not os.path.exists(assembly_path):
-        raise RuntimeError(f"Flye failed: {result.stderr}")
+        raise RuntimeError(f"Flye assembly failed: {result.stderr}")
     
     return assembly_path
 
 
 def align_assembly_to_reference(assembly_path: str, reference_path: str,
                                 output_paf: str, threads: int = 4) -> str:
-    """Align assembly back to reference."""
+    """
+    Align local assembly back to reference using minimap2.
+    """
     cmd = [
         'minimap2', '-x', 'asm5', '-t', str(threads),
         '-c', '--eqx', reference_path, assembly_path
@@ -81,7 +94,10 @@ def align_assembly_to_reference(assembly_path: str, reference_path: str,
 
 
 def parse_paf_for_breakpoints(paf_path: str) -> Tuple[int, int, float]:
-    """Parse PAF to find refined breakpoints."""
+    """
+    Parse minimap2 PAF alignment to find refined breakpoints.
+    Returns (refined_start, refined_end, confidence).
+    """
     refined_starts = []
     refined_ends = []
     
@@ -91,21 +107,29 @@ def parse_paf_for_breakpoints(paf_path: str) -> Tuple[int, int, float]:
             if len(parts) < 12:
                 continue
             
+            # PAF format: query_len, query_start, query_end, strand,
+            # target_len, target_start, target_end, matches, block_len, quality
+            query_start = int(parts[2])
+            query_end = int(parts[3])
             target_start = int(parts[7])
             target_end = int(parts[8])
             matches = int(parts[9])
             block_len = int(parts[10])
+            quality = int(parts[11])
             
-            if block_len > 0 and matches / block_len >= 0.9:
-                refined_starts.append(target_start)
-                refined_ends.append(target_end)
+            if block_len > 0:
+                identity = matches / block_len
+                if identity >= 0.9:  # High-quality alignment
+                    refined_starts.append(target_start)
+                    refined_ends.append(target_end)
     
     if not refined_starts:
         return (0, 0, 0.0)
     
+    # Use median positions for robustness
     refined_start = sorted(refined_starts)[len(refined_starts)//2]
     refined_end = sorted(refined_ends)[len(refined_ends)//2]
-    confidence = min(1.0, len(refined_starts) / 10)
+    confidence = min(1.0, len(refined_starts) / 10)  # At least 10 supporting contigs
     
     return (refined_start, refined_end, confidence)
 
@@ -114,85 +138,115 @@ def refine_sv(bam_path: str, reference_path: str, sv_id: str,
               sv_type: str, chrom: str, start: int, end: int,
               flank: int = 2000, min_reads: int = 10,
               threads: int = 4, work_dir: Optional[str] = None) -> dict:
-    """Run full LAR pipeline for a single SV."""
+    """
+    Run full LAR pipeline for a single SV.
     
+    Returns dict with refined breakpoints and evidence score.
+    """
     if work_dir is None:
         work_dir = tempfile.mkdtemp(prefix=f'lar_{sv_id}_')
+    
     os.makedirs(work_dir, exist_ok=True)
     
     try:
+        # Step 1: Extract reads
         fastq = os.path.join(work_dir, f'{sv_id}_reads.fastq')
         try:
             extract_region_reads(bam_path, chrom, start, end, flank, fastq)
         except RuntimeError:
             return {
-                'sv_id': sv_id, 'evidence_score': 0.0,
+                'sv_id': sv_id,
+                'evidence_score': 0.0,
                 'verdict': 'insufficient_coverage',
                 'details': f'Fewer than {min_reads} reads in region',
-                'refined_start': start, 'refined_end': end, 'confidence': 0.0
+                'refined_start': start,
+                'refined_end': end,
+                'confidence': 0.0
             }
         
-        # Count reads
+        # Check read count
         read_count = 0
         with open(fastq) as f:
             for line in f:
                 if line.startswith('@'):
                     read_count += 1
-        read_count = read_count // 4
+        read_count = read_count // 4  # Each read = 4 lines in FASTQ
         
         if read_count < min_reads:
             return {
-                'sv_id': sv_id, 'evidence_score': 0.2,
+                'sv_id': sv_id,
+                'evidence_score': 0.2,
                 'verdict': 'low_coverage',
-                'details': f'Only {read_count} reads (need ≥{min_reads})',
-                'refined_start': start, 'refined_end': end, 'confidence': 0.1
+                'details': f'Only {read_count} reads in region (need ≥{min_reads})',
+                'refined_start': start,
+                'refined_end': end,
+                'confidence': 0.1
             }
         
+        # Step 2: Local assembly
         assembly_dir = os.path.join(work_dir, 'flye_assembly')
         assembly_path = local_assemble(fastq, assembly_dir, threads)
         
+        # Step 3: Align back to reference
         paf_path = os.path.join(work_dir, f'{sv_id}_assembly.paf')
         align_assembly_to_reference(assembly_path, reference_path, paf_path, threads)
         
+        # Step 4: Parse breakpoints
         refined_start, refined_end, confidence = parse_paf_for_breakpoints(paf_path)
         
         if confidence > 0.8:
-            evidence_score, verdict = 0.95, 'confirmed'
+            evidence_score = 0.95
+            verdict = 'confirmed'
         elif confidence > 0.5:
-            evidence_score, verdict = 0.75, 'partial_confirmation'
+            evidence_score = 0.75
+            verdict = 'partial_confirmation'
         elif confidence > 0.2:
-            evidence_score, verdict = 0.4, 'weak_confirmation'
+            evidence_score = 0.4
+            verdict = 'weak_confirmation'
         else:
-            evidence_score, verdict = 0.1, 'assembly_failed'
+            evidence_score = 0.1
+            verdict = 'assembly_failed'
         
         return {
-            'sv_id': sv_id, 'evidence_score': evidence_score,
+            'sv_id': sv_id,
+            'evidence_score': evidence_score,
             'verdict': verdict,
-            'details': f'LAR: {read_count} reads, confidence={confidence:.2f}',
-            'refined_start': refined_start or start,
-            'refined_end': refined_end or end, 'confidence': confidence
+            'details': (f'LAR: {read_count} reads assembled, '
+                       f'confidence={confidence:.2f}, '
+                       f'refined=[{refined_start}-{refined_end}]'),
+            'refined_start': refined_start if refined_start else start,
+            'refined_end': refined_end if refined_end else end,
+            'confidence': confidence
         }
         
     except Exception as e:
         return {
-            'sv_id': sv_id, 'evidence_score': 0.0,
-            'verdict': 'error', 'details': f'LAR failed: {str(e)}',
-            'refined_start': start, 'refined_end': end, 'confidence': 0.0
+            'sv_id': sv_id,
+            'evidence_score': 0.0,
+            'verdict': 'error',
+            'details': f'LAR failed: {str(e)}',
+            'refined_start': start,
+            'refined_end': end,
+            'confidence': 0.0
         }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='LAR: Local Assembly Refinement')
-    parser.add_argument('--consensus', required=True)
-    parser.add_argument('--bam', required=True)
-    parser.add_argument('--reference', required=True)
-    parser.add_argument('--output', required=True)
-    parser.add_argument('--flank', type=int, default=2000)
-    parser.add_argument('--min-reads', type=int, default=10)
-    parser.add_argument('--threads', type=int, default=4)
-    parser.add_argument('--max-svs', type=int, default=None)
+    parser = argparse.ArgumentParser(
+        description='Local Assembly Refinement for SV breakpoints')
+    
+    parser.add_argument('--consensus', required=True, help='ICB consensus VCF')
+    parser.add_argument('--bam', required=True, help='Aligned BAM file')
+    parser.add_argument('--reference', required=True, help='Reference genome FASTA')
+    parser.add_argument('--output', required=True, help='Output refined VCF')
+    parser.add_argument('--flank', type=int, default=2000, help='Flanking region size')
+    parser.add_argument('--min-reads', type=int, default=10, help='Minimum reads for LAR')
+    parser.add_argument('--threads', type=int, default=4, help='CPU threads')
+    parser.add_argument('--max-svs', type=int, default=None, help='Max SVs to refine')
+    
     args = parser.parse_args()
     
+    # Parse VCF
     svs = []
     with open(args.consensus) as f:
         for line in f:
@@ -202,39 +256,49 @@ def main():
             if len(parts) < 8:
                 continue
             
+            import re
             svtype = 'UNK'
-            m = re.search(r'SVTYPE=(\w+)', parts[7])
-            if m:
-                svtype = m.group(1)
+            svtype_match = re.search(r'SVTYPE=(\w+)', parts[7])
+            if svtype_match:
+                svtype = svtype_match.group(1)
             
             end = int(parts[1])
-            m = re.search(r'END=(\d+)', parts[7])
-            if m:
-                end = int(m.group(1))
+            end_match = re.search(r'END=(\d+)', parts[7])
+            if end_match:
+                end = int(end_match.group(1))
             
             svs.append({
-                'id': parts[2], 'chrom': parts[0],
-                'start': int(parts[1]), 'end': end, 'type': svtype
+                'id': parts[2],
+                'chrom': parts[0],
+                'start': int(parts[1]),
+                'end': end,
+                'type': svtype
             })
     
     if args.max_svs:
         svs = svs[:args.max_svs]
     
     print(f"Running LAR on {len(svs)} SVs...")
+    
     results = []
     for i, sv in enumerate(svs):
         if i % 10 == 0:
-            print(f"  {i}/{len(svs)}...")
+            print(f"  {i}/{len(svs)} SVs processed...")
+        
         result = refine_sv(
             args.bam, args.reference, sv['id'], sv['type'],
             sv['chrom'], sv['start'], sv['end'],
-            flank=args.flank, min_reads=args.min_reads, threads=args.threads
+            flank=args.flank, min_reads=args.min_reads,
+            threads=args.threads
         )
         results.append(result)
     
+    # Write refined VCF
     with open(args.output, 'w') as out:
-        out.write('##fileformat=VCFv4.3\n##source=FUNGUS-SV LAR\n')
+        out.write('##fileformat=VCFv4.3\n')
+        out.write('##source=FUNGUS-SV LAR\n')
         out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n')
+        
         for sv, result in zip(svs, results):
             out.write(f"{sv['chrom']}\t{result['refined_start']}\t{sv['id']}\t")
             out.write(f"N\t<{sv['type']}>\t.\tPASS\t")
@@ -242,7 +306,10 @@ def main():
             out.write(f"LAR_SCORE={result['evidence_score']};")
             out.write(f"LAR_VERDICT={result['verdict']}\n")
     
-    print(f"LAR complete: {len(results)} SVs → {args.output}")
+    print(f"\n{'='*60}")
+    print(f"  LAR Complete: {len(results)} SVs refined")
+    print(f"  Output: {args.output}")
+    print(f"{'='*60}")
 
 
 if __name__ == '__main__':

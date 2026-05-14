@@ -10,62 +10,37 @@
 
 ## ⚠️ CRITICAL: Read Before Using
 
-**FUNGUS-SV is a hypothesis-generation tool, not a truth machine.**
+**FUNGUS-SV is a hypothesis-generation tool under active development. It is NOT production-ready.**
 
-There is no benchmark truth set for *Sporothrix schenckii* (or most non-model fungi). No external gold standard exists to validate structural variant calls against.
+### Honest Assessment of Current State
 
-### What This Pipeline Actually Provides
+| Component | Status | Details |
+|-----------|--------|---------|
+| ICB consensus calling | ✅ Working | 3 callers, 275 SVs from *S. schenckii* |
+| Depth signature layer | ✅ Working | For SVs ≥50 bp |
+| k-mer spectrum layer | ✅ Working | Requires pre-built jellyfish DB |
+| Breakpoint junction layer | ⚠️ Fixed, untested | Rewritten — needs validation run |
+| LAR (local assembly) | ⚠️ Fixed, untested | Now runs Flye automatically |
+| Ploidy confirmation | ✅ Working | Longshot SNV het rate analysis |
+| T-score calculation | ⚠️ Revised | Excludes circular validation |
+| FDR calibration | ❌ Not calibrated | Spike-in script exists, not run |
+| Size-stratified reporting | ⚠️ Added | Not yet populated with data |
 
-| Pipeline Output | Honest Interpretation |
-|----------------|----------------------|
-| "275 ICB consensus SVs" | 275 SVs where ≥2 of 3 alignment-based callers agree |
-| "174 three-caller SVs" | 174 SVs where all 3 callers agree on presence of an SV |
-| "50 triple-triangulated SVs" | 50 SVs supported by ≥2 orthogonal evidence layers (not including caller agreement) |
-| "T-score" | A weighted evidence score (0-1), NOT a probability. Higher = more orthogonal support |
-| "Confidence estimate" | Approximate, based on mixture modeling of T-score distribution. **NOT calibrated** |
+### Key Limitations
 
-### Known Limitations (Listed First For Transparency)
+1. **No ground truth calibration exists.** The `spike_in` benchmark has not been run. T-score thresholds (0.80, 0.60, 0.40) are arbitrary until calibrated.
 
-1. **LAR is NOT run automatically.** The local assembly layer is a placeholder. You must run `fungus_sv/modules/local_assembly.py` separately. Currently all SVs show LAR as "not_run".
+2. **63% of SVs are <100 bp** (173/275). These have limited orthogonal validation — only k-mer and breakpoint layers apply.
 
-2. **Caller agreement is NOT used in T-score.** We report ICB support but exclude it from triangulation scoring to avoid circular validation (using the prediction as its own validation).
+3. **Breakpoint layer was returning 0.0 for all SVs.** This has been fixed but NOT re-run on the data yet.
 
-3. **No external truth set exists.** T-scores and confidence estimates are internally derived and APPROXIMATE.
+4. **LAR was a placeholder (score=0.5).** Now rewritten to run Flye assembly automatically, but UNTESTED on the full dataset.
 
-4. **Systematic false positives are possible.** All SV callers share alignment assumptions. A reference assembly error could produce confident but false consensus calls.
+5. **Strain mismatch:** NBRC32961 reads mapped to 1099-18 reference. SVs may include strain differences.
 
-5. **Small SVs (<100 bp) have limited orthogonal validation.** Depth signature requires ≥100 bp. k-mer resolution depends on k-mer size (31 bp).
+6. **Not peer-reviewed.** Manuscript in preparation.
 
-6. **False negative rate is unknown.** SVs missed by all three callers are invisible.
-
-7. **These results have not been peer-reviewed.** Use with appropriate skepticism.
-
-**Any SV of biological interest must be independently validated by experimental methods (PCR, Sanger sequencing) before functional interpretation.**
-
----
-
-## 📖 Overview
-
-Structural variant (SV) calling in non-model organisms faces a fundamental challenge: **how do you assess confidence when no benchmark truth set exists?**
-
-FUNGUS-SV addresses this through a **two-phase architecture**:
-
-| Phase | Component | Description |
-|-------|-----------|-------------|
-| 🔵 **Prediction** | ICB (Iterative Consensus Builder) | Runs 3 SV callers (pbsv, Sniffles2, cuteSV), clusters overlapping SVs, scores by multi-caller agreement |
-| 🟢 **Validation** | VALID-SV Triangulation Core | Combines 4-5 independent evidence layers with uncorrelated failure modes. **Caller agreement is reported but excluded from T-score** to avoid circular validation |
-| 🟣 **Annotation** | Pan-Atlas | Maps SVs across species via ortholog matching and annotates functional impact |
-
----
-
-## 🎯 Why Haploid Fungi?
-
-FUNGUS-SV is explicitly designed for **haploid organisms**. This simplifies variant calling (no heterozygosity, no allelic phasing). Compatible organisms include:
-
-- All haploid fungi (*Sporothrix*, *Candida*, *Aspergillus*, *Histoplasma*, *Coccidioides*, *Cryptococcus*, *Fusarium*)
-- Bacteria and archaea
-- Haploid plants (moss, algal gametophytes)
-- Any haploid eukaryote with PacBio HiFi data at ≥30× coverage
+**Any SV of biological interest must be independently validated by experimental methods (PCR, Sanger sequencing).**
 
 ---
 
@@ -90,7 +65,7 @@ PacBio HiFi reads (*.fastq.gz)
 │ PHASE 2: VALIDATION (VALID-SV) │
 │ │
 │ Layer 1: ICB agreement (REPORTED ONLY)│
-│ Layer 2: Local Assembly (MANUAL) │
+│ Layer 2: Local Assembly (Flye) │
 │ Layer 3: Read-Depth Signature │
 │ Layer 4: k-mer Spectrum │
 │ Layer 5: Breakpoint Junctions │
@@ -109,63 +84,32 @@ PacBio HiFi reads (*.fastq.gz)
 
 ## 🧬 Results: *Sporothrix schenckii* NBRC32961
 
-### Sequencing
+### Current Data (from previous run — BEFORE fixes)
 
 | Metric | Value |
 |--------|-------|
 | Platform | PacBio Revio |
-| Chemistry | HiFi (CCS) |
-| Total reads | 197,830 |
-| Read N50 | ~18 kb |
-| Mean coverage | 58× |
-| SRA accession | DRR631664 |
-
-### Reference Genome
-
-| Metric | Value |
-|--------|-------|
-| Species | *Sporothrix schenckii* 1099-18 |
-| Assembly | GCF_000961545.1 |
-| Size | 32.4 Mb |
-| Contigs | 16 |
-
-> **Note:** NBRC32961 reads are mapped to strain 1099-18 reference. SVs may include strain-specific structural differences.
-
-### ICB Prediction Results
-
-| Metric | Value |
-|--------|-------|
-| Mapping rate | 99.91% |
-| Raw SV calls (3 callers) | 1,915 |
-| ICB consensus SVs (≥2 callers) | **275** |
-| Three-caller agreement | **174** |
-| Two-caller agreement | **101** |
+| Coverage | 58× |
+| Total SVs (≥2 callers) | 275 |
+| 3-caller agreement | 174 |
+| 2-caller agreement | 101 |
 | SV size range | 29 bp – 139 kb |
-| SV types | 269 DEL, 5 INV, 1 DUP |
+| **SVs <100 bp** | **173 (62.9%)** |
+| SVs 100-1000 bp | 83 (30.2%) |
+| SVs >1000 bp | 19 (6.9%) |
 
-### VALID-SV Triangulation Results
+### Validation Status by Size (BEFORE fixes)
 
-**These results are from computational triangulation only. They are not experimentally validated.**
+| Size Range | Depth | k-mer | Breakpoint | LAR | Actually Validated? |
+|------------|-------|-------|-------------|-----|---------------------|
+| <100 bp | ❌ | ⚠️ ~0.6 | ❌ 0.0 | ❌ placeholder | k-mer only |
+| 100-1000 bp | ✅ | ⚠️ ~0.6 | ❌ 0.0 | ❌ placeholder | depth + k-mer |
+| >1000 bp | ⚠️ 79% | ⚠️ 74% | ❌ 0.0 | ❌ placeholder | depth + k-mer |
 
-| Triangulation Tier | T-score | 3-caller SVs (n=174) | 2-caller SVs (n=101) | All SVs (n=275) |
-|-------------------|---------|---------------------|---------------------|-----------------|
-| Triple-triangulated | ≥0.80 | 45 (25.9%) | 5 (5.0%) | 50 (18.2%) |
-| Double-confirmed | 0.60–0.79 | 51 (29.3%) | 5 (5.0%) | 56 (20.4%) |
-| Single-line evidence | 0.40–0.59 | 32 (18.4%) | 58 (57.4%) | 90 (32.7%) |
-| Weak/contradicted | <0.40 | 46 (26.4%) | 33 (32.7%) | 79 (28.7%) |
-
-**Key finding:** Of the 174 SVs where all three callers agree, 46 (26.4%) show weak or contradictory evidence from orthogonal layers. This demonstrates why consensus-alone approaches are insufficient and orthogonal validation is essential.
-
-### Evidence Layer Performance
-
-| Layer | Independence | Used in T-score | Works best for | Limitation |
-|-------|-------------|-----------------|----------------|------------|
-| ICB consensus | Circular — excluded | **No** (reported only) | All SV types | Shares alignment assumptions |
-| Local assembly (LAR) | Medium (different paradigm) | **Yes** — but must run manually | ≥500 bp | Currently placeholder |
-| Read-depth signature | High (counts reads) | **Yes** | DEL, DUP ≥100 bp | Not for INV |
-| k-mer spectrum | Highest (no reference) | **Yes** | DEL, INS | Requires jellyfish DB |
-| Breakpoint junctions | Medium (split-read) | **Yes** | All types | Low sensitivity on HiFi |
-| Ploidy confirmation | Independent (SNV het rate) | **Yes** | All (validates haploid assumption) | Requires Longshot |
+**After fixes applied in this commit:**
+- Breakpoint layer rewritten (needs re-run)
+- LAR integrated (needs re-run)
+- Depth layer extended to ≥50 bp
 
 ---
 
@@ -173,7 +117,7 @@ PacBio HiFi reads (*.fastq.gz)
 
 ### Prerequisites
 
-- Linux (Ubuntu 20.04+ recommended)
+- Linux (Ubuntu 20.04+)
 - ≥32 GB RAM, ≥8 CPU cores
 - Conda or Mamba
 - PacBio HiFi reads at ≥30× coverage
@@ -181,102 +125,63 @@ PacBio HiFi reads (*.fastq.gz)
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/keltonjenkovguimaraes-alt/fungus-sv.git
 cd fungus-sv
-
-# Create and activate conda environment
 conda env create -f workflow/envs/environment.yaml
 conda activate snp_svant_pacbio
-
-# Verify installation
-python --version  # Should show Python 3.11
-snakemake --version  # Should show 8.0+
-minimap2 --version
-samtools --version
 Prepare Data
-# Create data directories
 mkdir -p data/raw data/reference
-
-# Copy your data files
 cp /path/to/your_sample.fastq.gz data/raw/
 cp /path/to/reference.fasta data/reference/
-cp /path/to/reference.gff data/reference/  # Optional: for annotation
-
-# Index reference
 samtools faidx data/reference/reference.fasta
 minimap2 -d data/reference/reference.mmi data/reference/reference.fasta
-Run Pipeline
 # Phase 1: SV Prediction
 snakemake -s workflow/Snakefile --cores 8
 
-# Phase 2: SV Validation
+# Phase 2: SV Validation (now includes LAR)
 python -m valid_sv.run_validation \
     --consensus-vcf results/variants/consensus/sample.consensus_svs.vcf \
     --bam results/alignment/sample.sorted.bam \
     --reference data/reference/reference.fasta \
     --fastq data/raw/sample.fastq.gz \
     --output results/validation/
-# LAR must be run manually for each SV of interest
-python fungus_sv/modules/local_assembly.py \
-    --consensus results/variants/consensus/sample.consensus_svs.vcf \
-    --bam results/alignment/sample.sorted.bam \
+python valid_sv/benchmarks/run_calibration.py \
     --reference data/reference/reference.fasta \
-    --output results/variants/refined/sample.refined_svs.vcf.gz
+    --bam results/alignment/sample.sorted.bam \
+    --fastq data/raw/sample.fastq.gz \
+    --output results/calibration/
 📁 Repository Structure
 fungus-sv/
-├── README.md                         # This file
-├── LICENSE                           # MIT License
-├── workflow/
-│   ├── Snakefile                     # Main Snakemake pipeline
-│   └── envs/environment.yaml         # Conda environment
-├── fungus_sv/                        # Prediction phase
-│   ├── core/
-│   │   ├── icb.py                    # Iterative Consensus Builder
-│   │   ├── build_consensus.py        # Consensus scoring algorithm
-│   │   └── annotate_svs.py           # Custom SV annotator
-│   └── modules/
-│       └── local_assembly.py         # LAR module (run separately)
-├── valid_sv/                         # Validation phase
+├── workflow/Snakefile                 # Main pipeline
+├── workflow/envs/environment.yaml     # Conda environment
+├── fungus_sv/
+│   ├── core/icb.py                    # Consensus builder
+│   └── modules/local_assembly.py      # LAR (Flye-based)
+├── valid_sv/
 │   ├── evidence/
-│   │   ├── layer_depth.py            # Read-depth signature
-│   │   ├── layer_kmer.py             # k-mer spectrum analysis
-│   │   ├── layer_breakpoint.py       # Breakpoint junction analysis
-│   │   └── layer_ploidy.py           # Ploidy confirmation via SNV het rate
-│   ├── quality/
-│   │   └── triangulability.py        # Assess which layers can validate each SV
+│   │   ├── layer_depth.py             # Read-depth (≥50 bp)
+│   │   ├── layer_kmer.py              # k-mer spectrum
+│   │   ├── layer_breakpoint.py        # Split-read analysis
+│   │   └── layer_ploidy.py            # SNV het rate
 │   ├── engine/
-│   │   ├── scorer.py                 # Weighted T-score computation
-│   │   └── fdr_estimator.py          # Mixture model confidence estimation
+│   │   ├── scorer.py                  # T-score (excludes consensus)
+│   │   └── fdr_estimator.py           # Mixture model
 │   ├── benchmarks/
-│   │   └── spike_in.py               # Synthetic benchmark for calibration
-│   ├── reporting/
-│   │   └── report_card.py            # Per-SV evidence summaries
-│   └── run_validation.py             # Main validation entry point
-├── config/config.yaml                # Pipeline configuration
-└── docs/methods.md                   # Detailed methods
- References
-Ko & Brandizzi (2025) — NEEDLE: Network-enabled gene discovery pipeline for non-model plants. Cell Reports Methods, 5, 100963.
+│   │   ├── spike_in.py                # Truth set generator
+│   │   └── run_calibration.py         # Calibration runner
+│   ├── reporting/report_card.py       # Per-SV reports
+│   └── run_validation.py              # Main entry point
+├── config/config.yaml
+└── results/validation_final/          # Previous run output
+📚 References
+Ko & Brandizzi (2025) — NEEDLE. Cell Reports Methods, 5, 100963.
 
-Turner et al. (2026) — OrthoGarden: Phylogenomics for non-model organisms without reference orthologs. Molecular Biology and Evolution, 43, msag053.
+Turner et al. (2026) — OrthoGarden. Mol Biol Evol, 43, msag053.
 
-Salam et al. (2025) — FAIRification of DMRichR for non-model epigenetics. Bioinformatics Advances, vbaf024.
+Gunasekaran et al. (2024) — SNP-SVant. Current Protocols, 4, e1046.
 
-Gunasekaran et al. (2024) — SNP-SVant: computational workflow for organisms lacking benchmarked variants. Current Protocols, 4, e1046.
-
-Holt et al. (2024) — HiPhase: jointly phasing small, structural, and tandem repeat variants. Bioinformatics, 40, btae042.
-
-Liu et al. (2024) — Tradeoffs in alignment and assembly-based methods for SV detection. Nature Communications, 15, 2447.
-
-Teixeira et al. (2014) — Comparative genomics of Sporothrix schenckii and Sporothrix brasiliensis. BMC Genomics, 15, 943.
+Liu et al. (2024) — SV detection tradeoffs. Nature Communications, 15, 2447.
 📄 Citation
-Guimarães, K.H.A; Philippsen H.K., et al. (2026). FUNGUS-SV: A structural variant discovery and triangulation-based prioritization pipeline for non-model haploid fungi using PacBio HiFi sequencing. In preparation.
-
+Guimarães, K.H.A; Philippsen H.K., et al. (2026). FUNGUS-SV. In preparation.
 📧 Contact
-Kelton Jenkov Guimarães
-GitHub: @keltonjenkovguimaraes-alt
-
-🤝 Acknowledgments
-Built for the Sporothrix research community and all scientists working on non-model fungal pathogens. The VALID-SV triangulation approach was inspired by NEEDLE's prediction-validation split, OrthoGarden's all-vs-all evidence inference, and DMRichR's FAIRification for non-model organisms.
-
-If this pipeline helps your research, please star ⭐ the repository and cite the paper.
+Kelton Jenkov Guimarães — GitHub: @keltonjenkovguimaraes-alt

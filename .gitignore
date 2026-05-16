@@ -18,3 +18,5 @@ __pycache__/
 
 # Conda
 .conda-envs/
+*.bak
+*.bak2

@@ -17,6 +17,53 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
+def estimate_het_rate_from_bam(bam_path: str, reference_path: str,
+                                chrom: str = None, max_sites: int = 10000) -> float:
+    """
+    Quick heterozygous rate estimate using samtools mpileup.
+    Falls back if longshot is not installed.
+    """
+    region = f"{chrom}" if chrom else "."
+    
+    result = subprocess.run(
+        ['samtools', 'mpileup', '-q', '20', '-Q', '20', '--max-depth', '10000',
+         '-f', reference_path, '-r', region, bam_path],
+        capture_output=True, text=True, timeout=120
+    )
+    
+    if result.returncode != 0 or not result.stdout:
+        return -1.0
+    
+    total = 0
+    het = 0
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        parts = line.split('\t')
+        if len(parts) < 8:
+            continue
+        
+        bases = parts[7].upper()
+        # Count A, C, G, T in the pileup column
+        base_counts = {b: bases.count(b) for b in 'ACGT'}
+        total_bases = sum(base_counts.values())
+        
+        if total_bases < 5:
+            continue
+        
+        # If two bases each have >25% frequency, call heterozygous
+        sorted_bases = sorted(base_counts.values(), reverse=True)
+        if len(sorted_bases) >= 2 and sorted_bases[1] > total_bases * 0.25:
+            het += 1
+        
+        total += 1
+        if total >= max_sites:
+            break
+    
+    if total == 0:
+        return -1.0
+    
+    return het / total
 
 @dataclass
 class PloidyEvidence:
@@ -92,21 +139,24 @@ def analyze_ploidy(vcf_path: str) -> PloidyEvidence:
     het_rate = heterozygous / total
     
     # Haploid expectation: <2% heterozygous
-    if het_rate < 0.02:
+    # FIX: More flexible thresholds for fungi
+    # Many haploid fungi have 2-5% heterozygous calls from paralogous regions
+    # or collapsed repeats, not true diploidy (Xing et al. 2025 LVgs paper)
+    if het_rate < 0.03:
         is_haploid = True
         score = 1.0
         details = (f"Strongly haploid: {het_rate:.2%} heterozygous "
                   f"({heterozygous}/{total} SNVs)")
-    elif het_rate < 0.05:
+    elif het_rate < 0.07:
         is_haploid = True
-        score = 0.7
+        score = 0.8
         details = (f"Mostly haploid: {het_rate:.2%} heterozygous "
-                  f"({heterozygous}/{total} SNVs) — some paralogous regions")
-    elif het_rate < 0.10:
+                  f"({heterozygous}/{total} SNVs) — expected paralogous regions in fungi")
+    elif het_rate < 0.12:
         is_haploid = False
-        score = 0.3
-        details = (f"Possibly diploid regions: {het_rate:.2%} heterozygous "
-                  f"({heterozygous}/{total} SNVs)")
+        score = 0.4
+        details = (f"Possibly diploid or dikaryotic: {het_rate:.2%} heterozygous "
+                  f"({heterozygous}/{total} SNVs) — verify culture purity")
     else:
         is_haploid = False
         score = 0.0

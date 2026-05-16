@@ -53,6 +53,7 @@ class DepthEvidence:
     raw_depths: Optional[List[float]] = field(default=None, repr=False)
 
 
+
 def get_region_depth(bam_path: str, chrom: str, start: int, end: int,
                      window_size: int = 100) -> List[float]:
     """
@@ -102,7 +103,6 @@ def get_region_depth(bam_path: str, chrom: str, start: int, end: int,
     
     return windowed
 
-
 def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
                             chrom: str, start: int, end: int,
                             flank_size: int = 2000,
@@ -110,7 +110,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
     """
     Analyze read depth around an SV to determine if depth pattern
     supports or contradicts the called SV type.
-    
+
     Args:
         bam_path: Path to sorted BAM
         sv_id: SV identifier
@@ -120,10 +120,27 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         end: SV end position
         flank_size: Base pairs of flanking region to sample
         window_size: Window size for depth averaging
-    
+
     Returns:
         DepthEvidence with verdict and scores
     """
+    # FIX: Dynamic flank for small SVs
+    # For SVs <500 bp, large flanks drown the signal
+    sv_size = abs(end - start)
+    if sv_size < 50:
+        return DepthEvidence(
+            sv_id=sv_id, sv_type=sv_type,
+            sv_chrom=chrom, sv_start=start, sv_end=end,
+            verdict=DepthVerdict.NOT_APPLICABLE,
+            depth_ratio=1.0, flank_mean=0, region_mean=0,
+            evidence_score=0.0,
+            details=f"SV too small for depth analysis ({sv_size} bp < 50 bp minimum)"
+        )
+    elif sv_size < 100:
+        flank_size = min(flank_size, max(200, sv_size * 3))
+    elif sv_size < 500:
+        flank_size = min(flank_size, max(500, sv_size * 2))
+    
     # Inversions and translocations are copy-neutral
     if sv_type in ('INV', 'BND', 'TRA'):
         return DepthEvidence(

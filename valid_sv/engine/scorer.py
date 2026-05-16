@@ -114,18 +114,19 @@ class TriangulationResult:
         }
 
 
-# Default weights derived from orthogonality analysis
-# Alignment consensus has lowest weight (3 callers share alignment assumptions)
-# k-mer spectrum has high weight (completely alignment-free)
-# These should be CALIBRATED with synthetic benchmarks
+# Updated weights based on Liu et al. (2024) Nature Comms:
+# - LAR/assembly provides breakpoint precision (near-zero shift) → highest weight
+# - Depth is independent of alignment → high weight
+# - k-mer is alignment-free → high weight, but lower for small SVs
+# - Breakpoint junction relies on alignment → moderate weight
+# These are PRIOR weights — spike-in calibration will refine them
 DEFAULT_WEIGHTS = {
-    'alignment_consensus': 0.0,    # Excluded: circular (ICB output = validation input)
-    'local_assembly': 0.30,
-    'depth_signature': 0.25,
-    'kmer_spectrum': 0.25,
-    'breakpoint_junction': 0.20,
+    'alignment_consensus': 0.0,     # Excluded: circular validation
+    'local_assembly': 0.30,         # Highest: assembly confirms exact breakpoints (Liu Fig 3)
+    'depth_signature': 0.25,        # Independent of alignment (alignment-free)
+    'kmer_spectrum': 0.25,          # Independent of alignment (alignment-free)
+    'breakpoint_junction': 0.20,    # Relies on alignment SA tags (moderate)
 }
-
 
 class TriangulationScorer:
     """

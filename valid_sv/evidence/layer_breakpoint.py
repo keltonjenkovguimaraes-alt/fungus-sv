@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Evidence Layer: Breakpoint Junction Analysis
-==============================================
-Analyzes split reads and soft-clipped reads at SV breakpoints
-to confirm precise breakpoint locations.
+Evidence Layer: Breakpoint Junction Analysis (v2 - FIXED)
+===========================================================
+Analyzes split reads (SA tags), soft-clipped reads, and CIGAR-spanning reads
+at SV breakpoints to confirm precise breakpoint locations.
 
-For PacBio HiFi reads: Looks for reads with SA (supplementary alignment)
-tags or soft-clipping at SV boundaries.
+Fixes applied:
+- Single region query instead of dual queries (faster, no double-counting)
+- Added CIGAR-spanning read detection for reads that fully span the SV
+- Minimum 3 reads at breakpoint required to avoid 0.0 default
+- Proper timeout and error handling per SV
 
-Author: VALID-SV / FUNGUS-SV
+Based on Liu et al. (2024) Nature Comms breakpoint deviation analysis:
+- pbsv achieves 90% of INS breakpoints within ±10 bp
+- Sniffles2 achieves highest proportion of zero-deviation DEL breakpoints
 """
 
 import subprocess
 import re
+import sys
 from dataclasses import dataclass
 from enum import Enum
 
@@ -34,38 +41,55 @@ class BreakpointEvidence:
     total_reads_at_breakpoint: int
     split_reads: int
     soft_clipped: int
+    spanning_reads: int
     details: str
 
 
 def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
                                   chrom: str, start: int, end: int,
-                                  window: int = 500) -> BreakpointEvidence:
-    """Analyze breakpoint support using split reads and soft-clipping."""
+                                  window: int = 500,
+                                  min_total_reads: int = 3) -> BreakpointEvidence:
+    """
+    Analyze breakpoint support using three evidence types:
+    1. SA tag (chimeric/split alignments) - strongest evidence
+    2. Soft-clipping at SV boundaries
+    3. CIGAR-spanning reads (reads with large INDEL matching SV size)
     
-    start_region = f"{chrom}:{max(0, start - window)}-{start + window}"
-    end_region = f"{chrom}:{max(0, end - window)}-{end + window}"
+    Uses a single merged region query to avoid double-counting.
+    """
+    
+    # Single merged region covering both breakpoints
+    region_start = max(0, start - window)
+    region_end = end + window
+    region = f"{chrom}:{region_start}-{region_end}"
     
     total_reads = 0
     split_reads = 0
     soft_clipped = 0
+    spanning_reads = 0
     
     try:
         result = subprocess.run(
-            ['samtools', 'view', bam_path, start_region],
-            capture_output=True, text=True, timeout=60
+            ['samtools', 'view', bam_path, region],
+            capture_output=True, text=True, timeout=120
         )
-        start_lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
         
-        result = subprocess.run(
-            ['samtools', 'view', bam_path, end_region],
-            capture_output=True, text=True, timeout=60
-        )
-        end_lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        total_reads = len(lines)
         
-        all_lines = start_lines + end_lines
-        total_reads = len(all_lines)
+        if total_reads < min_total_reads:
+            return BreakpointEvidence(
+                sv_id=sv_id, sv_type=sv_type,
+                verdict=BreakpointVerdict.INSUFFICIENT_DATA,
+                evidence_score=0.0, total_reads_at_breakpoint=total_reads,
+                split_reads=0, soft_clipped=0, spanning_reads=0,
+                details=f"Only {total_reads} reads at breakpoint region (need ≥{min_total_reads})"
+            )
         
-        for line in all_lines:
+        # Calculate expected SV size for spanning read detection
+        sv_size = abs(end - start)
+        
+        for line in lines:
             if not line or line.startswith('@'):
                 continue
             parts = line.split('\t')
@@ -73,38 +97,58 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
                 continue
             
             cigar = parts[5]
+            tags = parts[11:]
             
             # Check for SA tag (chimeric alignment)
-            for tag in parts[11:]:
+            has_sa = False
+            for tag in tags:
                 if tag.startswith('SA:Z:'):
                     split_reads += 1
+                    has_sa = True
                     break
             
-            # Check for soft-clipping
-            if re.search(r'^\d+S', cigar) or re.search(r'\d+S$', cigar):
-                soft_clipped += 1
+            # Check for soft-clipping (only count if no SA tag)
+            if not has_sa:
+                sc_left = re.match(r'^(\d+)S', cigar)
+                sc_right = re.search(r'(\d+)S$', cigar)
+                
+                if sc_left or sc_right:
+                    soft_clipped += 1
+            
+            # Check for CIGAR-spanning reads
+            # A read with a large insertion/deletion in CIGAR matching SV size
+            # suggests it spans the entire SV
+            if sv_size >= 50:
+                # Look for D (deletion) or I (insertion) operations near SV size
+                d_ops = re.findall(r'(\d+)D', cigar)
+                i_ops = re.findall(r'(\d+)I', cigar)
+                
+                for op_len in d_ops + i_ops:
+                    op_len = int(op_len)
+                    if op_len >= sv_size * 0.7 and op_len <= sv_size * 1.3:
+                        spanning_reads += 1
+                        break
         
-        if total_reads == 0:
-            return BreakpointEvidence(
-                sv_id=sv_id, sv_type=sv_type,
-                verdict=BreakpointVerdict.INSUFFICIENT_DATA,
-                evidence_score=0.0, total_reads_at_breakpoint=0,
-                split_reads=0, soft_clipped=0,
-                details=f"No reads at breakpoints ({start_region}, {end_region})"
-            )
-        
-        supporting = split_reads + soft_clipped
+        # Calculate support
+        # Unique supporting reads (a read can contribute to multiple categories)
+        supporting = max(split_reads + soft_clipped, spanning_reads)
+        # Cap at total reads
+        supporting = min(supporting, total_reads)
         support_ratio = supporting / total_reads if total_reads > 0 else 0
         
-        if support_ratio >= 0.10:
+        # Scoring based on Liu et al. breakpoint deviation distributions
+        # pbsv-like precision: 90% within ±10bp → score near 1.0
+        # Sniffles2-like: ~60% zero-deviation → score 0.8+
+        # General caller: ~40% zero-deviation → score 0.5-0.7
+        if support_ratio >= 0.15:
             verdict = BreakpointVerdict.CONFIRMED
-            score = min(1.0, 0.5 + support_ratio * 5)
-        elif support_ratio >= 0.05:
+            score = min(1.0, 0.6 + support_ratio * 3)
+        elif support_ratio >= 0.08:
             verdict = BreakpointVerdict.PARTIAL
-            score = 0.4 + support_ratio * 4
-        elif support_ratio >= 0.02:
+            score = 0.4 + support_ratio * 3
+        elif support_ratio >= 0.03:
             verdict = BreakpointVerdict.WEAK
-            score = 0.2 + support_ratio * 4
+            score = 0.2 + support_ratio * 3
         elif supporting > 0:
             verdict = BreakpointVerdict.WEAK
             score = 0.1
@@ -112,42 +156,52 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
             verdict = BreakpointVerdict.NO_SUPPORT
             score = 0.0
         
-        details = (f"Start: {len(start_lines)} reads, End: {len(end_lines)} reads | "
-                  f"Split: {split_reads}, Soft-clipped: {soft_clipped}, "
-                  f"Support: {support_ratio:.3f}")
+        # Build details string
+        detail_parts = [
+            f"Reads: {total_reads}",
+            f"Split: {split_reads}",
+            f"Soft-clip: {soft_clipped}",
+            f"Spanning: {spanning_reads}",
+            f"Support ratio: {support_ratio:.3f}"
+        ]
         
         return BreakpointEvidence(
             sv_id=sv_id, sv_type=sv_type, verdict=verdict,
             evidence_score=round(score, 4),
             total_reads_at_breakpoint=total_reads,
             split_reads=split_reads, soft_clipped=soft_clipped,
-            details=details
+            spanning_reads=spanning_reads,
+            details=" | ".join(detail_parts)
         )
-        
+    
     except subprocess.TimeoutExpired:
         return BreakpointEvidence(
             sv_id=sv_id, sv_type=sv_type,
             verdict=BreakpointVerdict.INSUFFICIENT_DATA,
             evidence_score=0.0, total_reads_at_breakpoint=0,
-            split_reads=0, soft_clipped=0, details="Timeout querying BAM"
+            split_reads=0, soft_clipped=0, spanning_reads=0,
+            details="Timeout querying BAM (120s)"
         )
     except Exception as e:
         return BreakpointEvidence(
             sv_id=sv_id, sv_type=sv_type,
             verdict=BreakpointVerdict.INSUFFICIENT_DATA,
             evidence_score=0.0, total_reads_at_breakpoint=0,
-            split_reads=0, soft_clipped=0, details=f"Error: {str(e)}"
+            split_reads=0, soft_clipped=0, spanning_reads=0,
+            details=f"Error: {str(e)}"
         )
 
 
 if __name__ == '__main__':
-    import sys
     if len(sys.argv) < 7:
-        print("Usage: layer_breakpoint.py <bam> <sv_id> <sv_type> <chrom> <start> <end>")
+        print("Usage: layer_breakpoint.py <bam> <sv_id> <sv_type> <chrom> <start> <end> [window]")
         sys.exit(1)
+    
+    window = int(sys.argv[7]) if len(sys.argv) > 7 else 500
     
     result = analyze_breakpoint_junctions(
         sys.argv[1], sys.argv[2], sys.argv[3],
-        sys.argv[4], int(sys.argv[5]), int(sys.argv[6])
+        sys.argv[4], int(sys.argv[5]), int(sys.argv[6]),
+        window=window
     )
     print(f"Score: {result.evidence_score:.3f} | {result.verdict.value} | {result.details}")

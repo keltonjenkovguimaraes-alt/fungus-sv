@@ -1,0 +1,7 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - sniffles=2.2
+  - cutesv=1.0.8
+  - pbsv=2.11.0

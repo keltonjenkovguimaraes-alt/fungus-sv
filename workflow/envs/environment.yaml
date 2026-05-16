@@ -1,4 +1,3 @@
-name: snp_svant_pacbio
 channels:
   - conda-forge
   - bioconda

@@ -2,9 +2,8 @@
 FUNGUS-SV: Structural variant discovery and triangulation-based
 prioritization for non-model haploid fungi using PacBio HiFi reads.
 
-Two-phase architecture:
-  Phase 1 (Prediction): ICB consensus from 3 SV callers
-  Phase 2 (Validation): VALID-SV triangulation across 5 evidence layers
+Multi-environment architecture: Each rule runs in its own conda environment.
+Environments defined in workflow/envs/*.yaml
 """
 
 configfile: "config/config.yaml"
@@ -15,25 +14,10 @@ SAMPLES = config["samples"]
 rule all:
     """Generate all outputs."""
     input:
-        # Phase 1: Prediction
         expand("results/alignment/{sample}.sorted.bam.bai", sample=SAMPLES),
         expand("results/variants/consensus/{sample}.consensus_svs.vcf", sample=SAMPLES),
-        expand("results/variants/refined/{sample}.refined_svs.vcf.gz", sample=SAMPLES),
-        expand("results/annotation/{sample}.annotated.tsv", sample=SAMPLES),
-        # Phase 2: Validation
         expand("results/validation/{sample}/validation_summary.txt", sample=SAMPLES),
         expand("results/validation/{sample}/validation_results.json", sample=SAMPLES),
-
-
-rule fastqc:
-    """Quality control for PacBio HiFi reads."""
-    input:
-        fq = "data/raw/{sample}.fastq.gz"
-    output:
-        html = "results/qc/{sample}_fastqc.html"
-    threads: 2
-    shell:
-        "fastqc -t {threads} -o results/qc/ {input.fq}"
 
 
 rule minimap2_align:
@@ -44,6 +28,7 @@ rule minimap2_align:
     output:
         bam = "results/alignment/{sample}.sorted.bam",
         bai = "results/alignment/{sample}.sorted.bam.bai"
+    conda: "/home/kelto/miniforge3/envs/sv_align"
     threads: 8
     shell:
         """
@@ -60,29 +45,34 @@ rule icb_consensus:
         ref = "data/reference/reference.fasta"
     output:
         consensus = "results/variants/consensus/{sample}.consensus_svs.vcf"
+    conda: "/home/kelto/miniforge3/envs/sv_call"
     threads: 8
+    params:
+        callers = ["pbsv", "sniffles2", "cutesv"],
+        min_callers = 2,
+        min_overlap = 0.5
     shell:
         """
-        python fungus_sv/core/build_consensus.py \
-            --vcfs results/variants/pbsv/{wildcards.sample}.vcf \
-                   results/variants/sniffles2/{wildcards.sample}.vcf \
-                   results/variants/cutesv/{wildcards.sample}.vcf \
-            --caller-names pbsv Sniffles2 cuteSV \
-            --output {output.consensus} \
+        python fungus_sv/core/icb.py \
+            --bam {input.bam} \
             --reference {input.ref} \
-            --min-callers 2 \
-            --min-overlap 0.5
+            --output results/variants/{wildcards.sample}/ \
+            --callers {params.callers} \
+            --min-callers {params.min_callers} \
+            --min-overlap {params.min_overlap} \
+            --threads {threads}
         """
 
 
 rule lar_refine:
-    """Refine SV breakpoints via local assembly (LAR)."""
+    """Phase 1 (optional): Refine SV breakpoints via local assembly (LAR)."""
     input:
         consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
         bam = "results/alignment/{sample}.sorted.bam",
         ref = "data/reference/reference.fasta"
     output:
-        refined = "results/variants/refined/{sample}.refined_svs.vcf.gz"
+        refined = "results/variants/refined/{sample}.refined_svs.vcf"
+    conda: "/home/kelto/miniforge3/envs/sv_lar"
     threads: 4
     shell:
         """
@@ -90,7 +80,23 @@ rule lar_refine:
             --consensus {input.consensus} \
             --bam {input.bam} \
             --reference {input.ref} \
-            --output {output.refined}
+            --output {output.refined} \
+            --threads {threads}
+        """
+
+
+rule build_kmer_db:
+    """Build jellyfish k-mer database (once per sample)."""
+    input:
+        fq = "data/raw/{sample}.fastq.gz"
+    output:
+        jf = "results/kmers/{sample}.jf"
+    conda: "/home/kelto/miniforge3/envs/sv_kmers"
+    threads: 4
+    shell:
+        """
+        mkdir -p results/kmers/
+        jellyfish count -m 31 -s 100M -t {threads} -o {output.jf} {input.fq}
         """
 
 
@@ -100,10 +106,12 @@ rule validate_triangulation:
         consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
         bam = "results/alignment/{sample}.sorted.bam",
         ref = "data/reference/reference.fasta",
-        fq = "data/raw/{sample}.fastq.gz"
+        fq = "data/raw/{sample}.fastq.gz",
+        jf = "results/kmers/{sample}.jf"
     output:
         summary = "results/validation/{sample}/validation_summary.txt",
         json = "results/validation/{sample}/validation_results.json"
+    conda: "/home/kelto/miniforge3/envs/sv_valid"
     threads: 8
     shell:
         """
@@ -112,23 +120,23 @@ rule validate_triangulation:
             --bam {input.bam} \
             --reference {input.ref} \
             --fastq {input.fq} \
+            --jellyfish-db {input.jf} \
             --output results/validation/{wildcards.sample}/ \
-            --min-support 1
+            --threads {threads}
         """
 
 
-rule vep_annotate:
-    """Annotate variants with functional predictions."""
+rule report:
+    """Generate per-SV report cards."""
     input:
-        vcf = "results/variants/refined/{sample}.refined_svs.vcf.gz",
-        ref = "data/reference/reference.fasta",
-        gff = "data/reference/reference.gff"
+        json = "results/validation/{sample}/validation_results.json"
     output:
-        tsv = "results/annotation/{sample}.annotated.tsv"
+        report = "results/validation/{sample}/report_cards.tsv"
+    conda: "/home/kelto/miniforge3/envs/sv_valid"
     shell:
         """
-        python fungus_sv/core/annotate_svs.py \
-            --vcf {input.vcf} \
-            --gff {input.gff} \
-            --output {output.tsv}
+        python valid_sv/reporting/report_card.py \
+            --json {input.json} \
+            --output {output.report}
         """
+

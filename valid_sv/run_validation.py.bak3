@@ -15,7 +15,7 @@ Usage:
 Architecture:
     Prediction phase (existing FUNGUS-SV):
         ICB consensus → Candidate SV list
-
+    
     Validation phase (VALID-SV):
         Layer 1: ICB multi-caller agreement (REPORTED, not scored - circular)
         Layer 2: Local Assembly Refinement (LAR) — must be run separately
@@ -61,16 +61,17 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
             parts = line.strip().split('\t')
             if len(parts) < 8:
                 continue
-
+            
             chrom = parts[0]
             pos = int(parts[1])
             sv_id = parts[2]
             info = parts[7]
+            
             # Extract SV type
             import re
             svtype_match = re.search(r'SVTYPE=(\w+)', info)
             svtype = svtype_match.group(1) if svtype_match else 'UNK'
-
+            
             # Extract end position
             end_match = re.search(r'END=(\d+)', info)
             svlen_match = re.search(r'SVLEN=(\d+)', info)
@@ -80,11 +81,11 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
                 end = pos + abs(int(svlen_match.group(1)))
             else:
                 end = pos
-
+            
             # Extract support
             support_match = re.search(r'SUPPORT=(\d+)', info)
             support = int(support_match.group(1)) if support_match else 1
-
+            
             svs.append({
                 'id': sv_id,
                 'chrom': chrom,
@@ -94,7 +95,7 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
                 'size': end - pos,
                 'support': support,
             })
-
+    
     return svs
 
 
@@ -102,12 +103,10 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                             reference_path: str, fastq_path: Optional[str],
                             output_dir: str, min_support: int = 1,
                             max_svs: Optional[int] = None,
-                            skip_kmer: bool = False,
-                            jellyfish_db: Optional[str] = None,
-                            threads: int = 4) -> dict:
+                            skip_kmer: bool = False) -> dict:
     """
     Run complete validation pipeline on consensus SVs.
-
+    
     Args:
         consensus_vcf: Path to ICB consensus VCF
         bam_path: Path to aligned BAM
@@ -117,12 +116,12 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         min_support: Minimum ICB support to validate (1, 2, or 3)
         max_svs: Maximum number of SVs to validate (for testing)
         skip_kmer: Skip k-mer layer if jellyfish unavailable
-
+    
     Returns:
         Dictionary with summary statistics
     """
     os.makedirs(output_dir, exist_ok=True)
-
+    
     print("=" * 70)
     print("  VALID-SV: Triangulation-Based SV Validation")
     print("=" * 70)
@@ -138,15 +137,15 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     # Parse SVs
     all_svs = parse_consensus_vcf(consensus_vcf)
     print(f"  Loaded {len(all_svs)} SVs from consensus VCF")
-
+    
     # Filter by support
     svs_to_validate = [sv for sv in all_svs if sv['support'] >= min_support]
     print(f"  Validating {len(svs_to_validate)} SVs with SUPPORT ≥ {min_support}")
-
+    
     if max_svs:
         svs_to_validate = svs_to_validate[:max_svs]
         print(f"  (Limited to {max_svs} for testing)")
-
+    
     # Assess triangulability first
     print("\n  Assessing triangulability...")
     triangulability_reports = {}
@@ -158,8 +157,8 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             has_bam=bool(bam_path)
         )
         triangulability_reports[sv['id']] = report
-
-    fully = sum(1 for r in triangulability_reports.values()
+    
+    fully = sum(1 for r in triangulability_reports.values() 
                 if r.tier.name == 'FULLY_TRIANGULABLE')
     partially = sum(1 for r in triangulability_reports.values()
                    if r.tier.name == 'PARTIALLY_TRIANGULABLE')
@@ -171,12 +170,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     
     # Build k-mer database once (if fastq provided)
     kmer_db = None
-    if jellyfish_db and os.path.exists(jellyfish_db):
-        from valid_sv.evidence.layer_kmer import set_database_path
-        kmer_db = jellyfish_db
-        set_database_path(kmer_db)
-        print(f"  Using pre-built k-mer DB: {kmer_db}")
-    elif fastq_path and not skip_kmer:
+    if fastq_path and not skip_kmer:
         from valid_sv.evidence.layer_kmer import build_kmer_database, set_database_path
         try:
             print("\n  Building k-mer database (one-time)...")
@@ -187,32 +181,35 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             print(f"  WARNING: k-mer DB build failed: {e}")
             print(f"  k-mer layer will be skipped")
             skip_kmer = True
-
+    
     # Run evidence layers
     print("\n  Running evidence layers...")
-
+    
     scorer = TriangulationScorer()
     results = []
     
     for i, sv in enumerate(svs_to_validate):
         if i % 10 == 0 and i > 0:
             print(f"    Processed {i}/{len(svs_to_validate)} SVs...")
-
+        
         layer_results = []
-
+        
         # Layer 1: Alignment consensus (pre-computed from VCF)
         icb_score = {1: 0.33, 2: 0.67, 3: 1.0}.get(sv['support'], 0.33)
         layer_results.append(LayerResult(
             "alignment_consensus", icb_score,
-            f"{sv['support']}/3 callers", True, 0.0,
-            f"ICB support: {sv['support']} callers (reported but NOT used in T-score)"
+            f"{sv['support']}/3 callers", True, 0.0,  # Weight 0.0 = excluded from T-score
+            f"ICB support: {sv['support']} callers (reported but NOT used in T-score — circular)"
         ))
-
-        # Layer 2: Local assembly (LAR)
+        
+        # Layer 2: Local assembly — uses existing LAR results if available
+        # For now, mark as available but unrun; user runs LAR separately
         triang = triangulability_reports.get(sv['id'])
-        lar_available = any(l.layer_name == 'local_assembly' and l.available
+        lar_available = any(l.layer_name == 'local_assembly' and l.available 
                            for l in triang.layers) if triang else False
         if lar_available:
+            # LAR must be run separately. Mark as unavailable until run.
+            # The LAR module is at: fungus_sv/modules/local_assembly.py
             layer_results.append(LayerResult(
                 "local_assembly", 0.0,
                 "not_run", False, 0.30,
@@ -223,9 +220,9 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 "local_assembly", 0.0, "unavailable", False, 0.25,
                 "Insufficient data for LAR"
             ))
-
+        
         # Layer 3: Depth signature
-        depth_available = any(l.layer_name == 'depth_signature' and l.available
+        depth_available = any(l.layer_name == 'depth_signature' and l.available 
                               for l in triang.layers) if triang else False
         if depth_available and sv['svtype'] in ('DEL', 'DUP'):
             try:
@@ -248,12 +245,12 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 "depth_signature", 0.0, "not_applicable", False, 0.20,
                 f"Not applicable for {sv['svtype']}"
             ))
-
+        
         # Layer 4: k-mer spectrum
-        kmer_available = (any(l.layer_name == 'kmer_spectrum' and l.available
+        kmer_available = (any(l.layer_name == 'kmer_spectrum' and l.available 
                              for l in triang.layers) if triang else False)
         kmer_available = kmer_available and not skip_kmer and fastq_path
-
+        
         if kmer_available and sv['svtype'] in ('DEL', 'INS'):
             try:
                 kmer_result = analyze_kmer_spectrum(
@@ -274,14 +271,14 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 ))
         else:
             layer_results.append(LayerResult(
-                "kmer_spectrum", 0.0,
+                "kmer_spectrum", 0.0, 
                 "not_applicable" if sv['svtype'] not in ('DEL', 'INS') else "unavailable",
                 False, 0.25,
                 "k-mer layer not available (missing FASTQ or jellyfish)"
             ))
-
+        
         # Layer 5: Breakpoint junction
-        bp_available = any(l.layer_name == 'breakpoint_junction' and l.available
+        bp_available = any(l.layer_name == 'breakpoint_junction' and l.available 
                           for l in triang.layers) if triang else False
         if bp_available:
             try:
@@ -304,6 +301,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 "breakpoint_junction", 0.0, "unavailable", False, 0.20,
                 "No BAM available"
             ))
+        
 
         # Layer 6: Ploidy confirmation (SNV het rate)
         try:
@@ -311,9 +309,10 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             if os.path.exists(ploidy_vcf):
                 ploidy_result = analyze_ploidy(ploidy_vcf)
             else:
+                # Run Longshot if VCF doesn't exist
                 run_longshot(bam_path, reference_path, ploidy_vcf)
                 ploidy_result = analyze_ploidy(ploidy_vcf)
-
+            
             ploidy_score = ploidy_result.evidence_score if ploidy_result.is_haploid else 0.3
             layer_results.append(LayerResult(
                 "ploidy_confirmation", ploidy_score,
@@ -325,7 +324,6 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 "ploidy_confirmation", 0.0, "error", False, 0.15,
                 f"Ploidy analysis failed: {str(e)}"
             ))
-        
         # Score
         result = scorer.score(
             sv['id'], sv['svtype'], sv['chrom'],
@@ -333,12 +331,12 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             layer_results
         )
         results.append(result)
-
+    
     print(f"    Completed {len(results)} SVs\n")
-
+    
     # Estimate FDR
     all_tscores = [r.t_score for r in results]
-
+    
     print("  Estimating FDR from T-score distribution...")
     try:
         fdr_estimate = estimate_fdr(all_tscores)
@@ -348,30 +346,30 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     except Exception:
         fdr_estimate = None
         print("    Using simple estimator (install scikit-learn for mixture model)")
-
+    
     # Generate report cards
     print("\n  Generating report cards...")
-
+    
     reports_dir = os.path.join(output_dir, 'reports')
     os.makedirs(reports_dir, exist_ok=True)
-
+    
     # Individual reports
     for result in results:
         report = generate_report_card(result)
         report_path = os.path.join(reports_dir, f"{result.sv_id}.txt")
         with open(report_path, 'w') as f:
             f.write(report)
-
+    
     # Summary table
     summary = generate_summary_table(results)
     summary_path = os.path.join(output_dir, 'validation_summary.txt')
     with open(summary_path, 'w') as f:
         f.write(summary)
-
+    
     print(summary)
     print(f"\n  Individual reports: {reports_dir}/")
     print(f"  Summary: {summary_path}")
-
+    
     # JSON output for programmatic use
     json_output = {
         'pipeline': 'VALID-SV v0.1.0',
@@ -379,17 +377,17 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         'n_svs_validated': len(results),
         'fdr_estimate': {
             'method': 'mixture_model' if fdr_estimate else 'simple_empirical',
-            'thresholds': fdr_estimate.thresholds if fdr_estimate else
+            'thresholds': fdr_estimate.thresholds if fdr_estimate else 
                          estimate_fdr(all_tscores).thresholds,
         } if all_tscores else {},
         'results': [r.to_dict() for r in results],
     }
-
+    
     json_path = os.path.join(output_dir, 'validation_results.json')
     with open(json_path, 'w') as f:
         json.dump(json_output, f, indent=2)
     print(f"  JSON output: {json_path}")
-
+    
     print("\n" + "=" * 70)
     print("  VALIDATION COMPLETE")
     print("=" * 70)
@@ -399,7 +397,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     print("  3. Experimental validation required for biological conclusions")
     print("  4. This is a hypothesis-generation tool, not a truth machine")
     print()
-
+    
     return json_output
 
 
@@ -408,7 +406,7 @@ def main():
         description='VALID-SV: Triangulation-based SV validation',
         epilog='Development version — estimates are approximate.'
     )
-
+    
     parser.add_argument('--consensus-vcf', required=True,
                        help='ICB consensus VCF file')
     parser.add_argument('--bam', required=True,
@@ -425,13 +423,9 @@ def main():
                        help='Max SVs to validate (for testing)')
     parser.add_argument('--skip-kmer', action='store_true',
                        help='Skip k-mer layer (if jellyfish unavailable)')
-    parser.add_argument('--jellyfish-db', default=None,
-                       help='Pre-built jellyfish database (.jf)')
-    parser.add_argument('--threads', type=int, default=4,
-                       help='Threads for parallel steps')
-
+    
     args = parser.parse_args()
-
+    
     run_validation_pipeline(
         consensus_vcf=args.consensus_vcf,
         bam_path=args.bam,
@@ -441,8 +435,6 @@ def main():
         min_support=args.min_support,
         max_svs=args.max_svs,
         skip_kmer=args.skip_kmer,
-        jellyfish_db=args.jellyfish_db,
-        threads=args.threads,
     )
 
 

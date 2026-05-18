@@ -1,5 +1,0 @@
-
-=== VALIDATION REPORT: SV1 ===
-Type: DEL
-T-Score: 0.809
-Confidence: HIGH

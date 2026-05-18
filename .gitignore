@@ -20,3 +20,13 @@ __pycache__/
 .conda-envs/
 *.bak
 *.bak2
+
+# Test artifacts
+test_output/
+test_valid_sv/
+dummy.*
+test.vcf
+test_pipeline_logic.py
+
+# Old single env
+workflow/envs/environment.yaml

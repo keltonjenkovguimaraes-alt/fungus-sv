@@ -1,6 +1,0 @@
-SV Validation Summary
-==================================================
-ID                   Type     T-Score    Confidence
---------------------------------------------------
-SV1                  DEL      0.809      HIGH      
-SV2                  DUP      0.809      HIGH      

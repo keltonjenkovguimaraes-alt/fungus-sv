@@ -1,5 +1,0 @@
-
-=== VALIDATION REPORT: SV2 ===
-Type: DUP
-T-Score: 0.809
-Confidence: HIGH

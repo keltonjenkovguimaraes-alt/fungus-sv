@@ -1,0 +1,135 @@
+{
+  "pipeline": "VALID-SV v0.1.0",
+  "status": "DEVELOPMENT \u2014 estimates are approximate",
+  "n_svs_validated": 2,
+  "fdr_estimate": {
+    "method": "mixture_model",
+    "thresholds": {
+      "low": 0.3,
+      "medium": 0.5,
+      "high": 0.7
+    }
+  },
+  "results": [
+    {
+      "sv_id": "SV1",
+      "svtype": "DEL",
+      "chrom": "chr1",
+      "pos": 1000,
+      "end": 2000,
+      "support": 2,
+      "t_score": 0.8090909090909092,
+      "confidence_tier": "HIGH",
+      "layer_results": [
+        {
+          "layer_name": "alignment_consensus",
+          "score": 0.67,
+          "evidence": "2/3 callers",
+          "available": true,
+          "weight": 0.0,
+          "details": "ICB support: 2 callers (reported but NOT used in T-score)"
+        },
+        {
+          "layer_name": "local_assembly",
+          "score": 0.0,
+          "evidence": "unavailable",
+          "available": false,
+          "weight": 0.25,
+          "details": "Insufficient data for LAR"
+        },
+        {
+          "layer_name": "depth_signature",
+          "score": 0.75,
+          "evidence": "SUPPORTING",
+          "available": true,
+          "weight": 0.2,
+          "details": "Depth signature analyzed for SV1"
+        },
+        {
+          "layer_name": "kmer_spectrum",
+          "score": 0.0,
+          "evidence": "unavailable",
+          "available": false,
+          "weight": 0.25,
+          "details": "k-mer layer not available (missing FASTQ or jellyfish)"
+        },
+        {
+          "layer_name": "breakpoint_junction",
+          "score": 0.8,
+          "evidence": "SUPPORTING",
+          "available": true,
+          "weight": 0.2,
+          "details": "Breakpoint junctions analyzed for SV1"
+        },
+        {
+          "layer_name": "ploidy_confirmation",
+          "score": 0.9,
+          "evidence": "het_rate=0.020",
+          "available": true,
+          "weight": 0.15,
+          "details": "Ploidy confirmed: haploid"
+        }
+      ]
+    },
+    {
+      "sv_id": "SV2",
+      "svtype": "DUP",
+      "chrom": "chr2",
+      "pos": 3000,
+      "end": 3500,
+      "support": 1,
+      "t_score": 0.8090909090909092,
+      "confidence_tier": "HIGH",
+      "layer_results": [
+        {
+          "layer_name": "alignment_consensus",
+          "score": 0.33,
+          "evidence": "1/3 callers",
+          "available": true,
+          "weight": 0.0,
+          "details": "ICB support: 1 callers (reported but NOT used in T-score)"
+        },
+        {
+          "layer_name": "local_assembly",
+          "score": 0.0,
+          "evidence": "unavailable",
+          "available": false,
+          "weight": 0.25,
+          "details": "Insufficient data for LAR"
+        },
+        {
+          "layer_name": "depth_signature",
+          "score": 0.75,
+          "evidence": "SUPPORTING",
+          "available": true,
+          "weight": 0.2,
+          "details": "Depth signature analyzed for SV2"
+        },
+        {
+          "layer_name": "kmer_spectrum",
+          "score": 0.0,
+          "evidence": "not_applicable",
+          "available": false,
+          "weight": 0.25,
+          "details": "k-mer layer not available (missing FASTQ or jellyfish)"
+        },
+        {
+          "layer_name": "breakpoint_junction",
+          "score": 0.8,
+          "evidence": "SUPPORTING",
+          "available": true,
+          "weight": 0.2,
+          "details": "Breakpoint junctions analyzed for SV2"
+        },
+        {
+          "layer_name": "ploidy_confirmation",
+          "score": 0.9,
+          "evidence": "het_rate=0.020",
+          "available": true,
+          "weight": 0.15,
+          "details": "Ploidy confirmed: haploid"
+        }
+      ]
+    }
+  ]
+}

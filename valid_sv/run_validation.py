@@ -215,7 +215,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         if lar_available:
             layer_results.append(LayerResult(
                 "local_assembly", 0.0,
-                "not_run", False, 0.30,
+                "not_run", False, 0.25,
                 "LAR NOT YET RUN — run fungus_sv/modules/local_assembly.py first"
             ))
         else:
@@ -235,17 +235,17 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 )
                 layer_results.append(LayerResult(
                     "depth_signature", depth_result.evidence_score,
-                    depth_result.verdict.value, True, 0.20,
+                    depth_result.verdict.value, True, 0.25,
                     depth_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "depth_signature", 0.0, "error", False, 0.20,
+                    "depth_signature", 0.0, "error", False, 0.25,
                     f"Depth analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "depth_signature", 0.0, "not_applicable", False, 0.20,
+                "depth_signature", 0.0, "not_applicable", False, 0.25,
                 f"Not applicable for {sv['svtype']}"
             ))
 
@@ -291,17 +291,17 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 )
                 layer_results.append(LayerResult(
                     "breakpoint_junction", bp_result.evidence_score,
-                    bp_result.verdict.value, True, 0.20,
+                    bp_result.verdict.value, True, 0.25,
                     bp_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "breakpoint_junction", 0.0, "error", False, 0.20,
+                    "breakpoint_junction", 0.0, "error", False, 0.25,
                     f"Breakpoint analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "breakpoint_junction", 0.0, "unavailable", False, 0.20,
+                "breakpoint_junction", 0.0, "unavailable", False, 0.25,
                 "No BAM available"
             ))
 
@@ -322,7 +322,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             ))
         except Exception as e:
             layer_results.append(LayerResult(
-                "ploidy_confirmation", 0.0, "error", False, 0.15,
+                "ploidy_confirmation", 0.0, "error", False, 0.00,
                 f"Ploidy analysis failed: {str(e)}"
             ))
         

@@ -218,6 +218,13 @@ def build_consensus(caller_vcfs, output_vcf, min_overlap=0.5, min_callers=2, fla
     - min_overlap: reciprocal overlap threshold (0.5 from Liu Nature Comms)
     - min_callers: minimum callers supporting an SV (2 from Liu Genome Biol)
     - flank: base pairs of tolerance for breakpoint matching (200 from Kronenberg)
+    # NOTE: Dunn et al. (2024) Genome Biology shows that evaluating
+    # variants in superclusters rather than independently reduces
+    # false negative SVs by up to 52.4%. The current implementation
+    # uses simple reciprocal overlap clustering. A future version
+    # should implement vcfdist-style superclustering where nearby
+    # small and structural variants are evaluated together.
+    # See: https://doi.org/10.1186/s13059-024-03394-5
     """
     print(f"[ICB] Building consensus from {len(caller_vcfs)} callers...")
     print(f"[ICB] Parameters: overlap≥{min_overlap}, callers≥{min_callers}, flank={flank}bp")

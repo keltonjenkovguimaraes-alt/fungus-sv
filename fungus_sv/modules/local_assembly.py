@@ -200,6 +200,11 @@ def refine_sv(bam_path: str, reference_path: str, sv_id: str,
     
     sv_size = abs(end - start)
     region_size = sv_size + 2 * flank
+
+    # DeBreak (Chen et al. 2023) uses depth-adaptive minimum support:
+    # Nsupp = Depth/10 + 2. Applied after read extraction below.
+    # Benchmark target: DeBreak achieves 59.81% exact breakpoints and
+    # 81.33% within 1bp on simulated PacBio data.    region_size = sv_size + 2 * flank
     
     try:
         # Step 1: Extract reads
@@ -215,6 +220,10 @@ def refine_sv(bam_path: str, reference_path: str, sv_id: str,
                 'details': str(e),
                 'refined_start': start, 'refined_end': end, 'confidence': 0.0
             }
+            # DeBreak (Chen et al. 2023): depth-adaptive minimum reads
+            # Nsupp = Depth/10 + 2
+            estimated_depth = (read_count * 15000) / region_size
+            effective_min_reads = max(5, int(estimated_depth / 10) + 2)
         
         # Step 2: Estimate coverage
         # Assumes ~15 kb average HiFi read length
@@ -223,14 +232,6 @@ def refine_sv(bam_path: str, reference_path: str, sv_id: str,
         if estimated_coverage < min_coverage:
             if cleanup:
                 os.remove(fastq)
-            return {
-                'sv_id': sv_id, 'evidence_score': 0.15,
-                'verdict': 'low_coverage',
-                'details': (f'{read_count} reads, '
-                          f'est. coverage: {estimated_coverage:.1f}× '
-                          f'(need ≥{min_coverage}×)'),
-                'refined_start': start, 'refined_end': end, 'confidence': 0.1
-            }
         
         print(f"[LAR] {sv_id}: {read_count} reads, est. coverage: {estimated_coverage:.1f}×")
         

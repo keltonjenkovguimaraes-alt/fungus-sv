@@ -155,10 +155,12 @@ def simulate_reads(modified_ref: str, output_fastq: str,
     # Check for pbsim3
     if shutil.which('pbsim3'):
         print("  Using pbsim3 for read simulation...")
-        cmd = (f'pbsim3 --strategy wgs --method qshmm '
-               f'--qshmm QSHMM-RSII --depth {coverage} '
+        cmd = (f'pbsim --strategy wgs --method errhmm '
+               f'--errhmm {os.path.expanduser("~")}/miniforge3/envs/sv_valid/data/ERRHMM-RSII.model '
+               f'--depth {coverage} '
+               f'--genome {modified_ref} '
                f'--length-min 5000 --length-mean {read_n50} '
-               f'{modified_ref} --prefix {output_fastq}')
+               f'--prefix {output_fastq}')
         subprocess.run(cmd, shell=True, check=True)
         return output_fastq + '.fastq'
     

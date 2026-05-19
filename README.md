@@ -1,296 +1,205 @@
-# 🔬 VALID-SV: Triangulation-Based SV Validation Pipeline
+# 🧬 FUNGUS-SV
 
-**Multi-layer structural variant validation using six independent evidence types**
+**A structural variant discovery and triangulation-based prioritization pipeline for non-model haploid fungi using PacBio HiFi long reads.**
 
-[![Status](https://img.shields.io/badge/status-development-orange)]()
-[![Python](https://img.shields.io/badge/python-3.8+-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-yellow.svg)](https://python.org)
+[![Snakemake](https://img.shields.io/badge/Snakemake-6.15-blue.svg)](https://snakemake.github.io)
 
-## 📋 Overview
+---
 
-VALID-SV is a validation pipeline that assesses structural variant (SV) confidence through triangulation of multiple evidence layers. It takes candidate SVs from ICB (Integrative Consensus Builder) and produces a **T-score** (0-1) and **confidence estimate** for each variant.
+## ⚠️ HONEST ASSESSMENT — READ BEFORE USING
 
-### Why Triangulation?
+FUNGUS-SV is a **hypothesis-generation tool under active development.** It is NOT production-ready.
 
-Single-method SV calling produces false positives. VALID-SV cross-validates each SV across six independent lines of evidence:
+### What This Pipeline Actually Does
 
-| Layer | Evidence Type | Weight |
-|-------|--------------|--------|
-| 1 | ICB Multi-Caller Agreement | 0.00* |
-| 2 | Local Assembly Refinement | 0.30 |
-| 3 | Read-Depth Signature | 0.20 |
-| 4 | k-mer Spectrum Analysis | 0.25 |
-| 5 | Breakpoint Junctions | 0.20 |
-| 6 | Ploidy Confirmation | 0.15 |
+FUNGUS-SV detects structural variants (SVs ≥50 bp) in haploid fungal genomes using PacBio HiFi reads. It combines three SV callers (pbsv, Sniffles2, cuteSV) through an Intersection-Consensus-Builder (ICB), then validates each consensus SV using five orthogonal evidence layers:
 
-*Layer 1 is reported but excluded from T-score (circular evidence)
+| Layer | Method | What It Measures |
+|-------|--------|-----------------|
+| Local Assembly Refinement (LAR) | Flye assembly of reads at breakpoint | Confirms SV by assembling the variant allele |
+| Read-Depth Signature | Coverage drop/increase at SV region | Detects deletions and duplications via copy number change |
+| k-mer Spectrum | Jellyfish k-mer presence/absence | Confirms sequence gain/loss independent of alignment |
+| Breakpoint Junction | Split-read and soft-clip analysis | Confirms precise breakpoint locations |
+| Ploidy Confirmation | SNV heterozygosity rate | Verifies haploid assumption holds |
+
+These layers are combined into a **T-score (0-1)** that ranks SVs by confidence.
+
+### What We Know vs. What We Don't
+
+| We Know | We Don't Know |
+|---------|---------------|
+| The pipeline compiles and runs end-to-end | Whether triangulation actually separates true from false SVs |
+| ICB consensus (≥2 of 3 callers) reduces false positives | The optimal number of callers for fungal genomes |
+| LAR via Flye can refine breakpoints | The false positive rate of LAR alone |
+| Depth and k-mer are alignment-independent | Whether these layers are truly independent or correlated |
+| The code is modular with 6 isolated conda environments | How the pipeline performs on real fungal sequencing data |
+
+### First Calibration Results (Synthetic *C. auris* Data)
+
+| Metric | Value |
+|--------|-------|
+| Genome | *Candidozyma auris* B11220 (RefSeq GCF_003013715.1, 12.25 Mb, 7 chromosomes) |
+| Truth SVs | 50 spike-in SVs (20 DEL, 10 INS, 10 INV, 10 DUP) |
+| Simulated reads | 47,365 HiFi-like reads, 58× coverage |
+| Consensus SVs detected | 9 |
+| True positives | 7 (all INV) |
+| False positives | 2 |
+| **Precision** | **77.8%** |
+| **Recall** | **14.0%** |
+| **F1** | **23.7%** |
+
+**Caveat:** These results use a simple read simulator. Real HiFi data with proper SV breakpoints would likely yield different performance. This is a floor, not a ceiling.
+
+### Known Limitations
+
+1. **Layer weights are uniform (0.25 each).** No published study provides empirical weights for combining SV evidence layers. These are uninformative priors pending calibration.
+
+2. **T-score thresholds are arbitrary.** We use 0.80/0.60/0.40 based on convention, not empirical FDR. The spike-in calibration has not been run at scale.
+
+3. **63% of SVs are <100 bp** (from *S. schenckii* test data). These have reduced orthogonal validation — only k-mer and breakpoint layers apply.
+
+4. **No fungal benchmark exists.** There is no GIAB-equivalent truth set for any fungus. All validation must use synthetic or orthogonal approaches.
+
+5. **Not peer-reviewed.** Manuscript in preparation.
+
+6. **Any SV of biological interest must be independently validated by experimental methods (PCR, Sanger sequencing).**
+
+---
+
+## 📊 Pipeline Architecture
+
+PacBio HiFi reads (*.fastq.gz)
+│
+▼
+[minimap2] ← map-hifi preset
+│
+▼
+┌────────────────────────────────────────┐
+│ PHASE 1: PREDICTION (ICB) │
+│ pbsv + Sniffles2 + cuteSV │
+│ ↓ │
+│ Consensus clustering (≥2 callers) │
+│ Output: candidate SVs │
+└────────────────────────────────────────┘
+│
+▼
+┌────────────────────────────────────────┐
+│ PHASE 2: VALIDATION (VALID-SV) │
+│ │
+│ Layer 1: ICB agreement (reported only) │
+│ Layer 2: Local Assembly (Flye) │
+│ Layer 3: Read-Depth Signature │
+│ Layer 4: k-mer Spectrum (Jellyfish) │
+│ Layer 5: Breakpoint Junctions │
+│ Layer 6: Ploidy Confirmation (SNV) │
+│ ↓ │
+│ Triangulation Engine → T-score │
+└────────────────────────────────────────┘
+│
+▼
+┌────────────────────────────────────────┐
+│ PHASE 3: REPORTING │
+│ Per-SV report cards + summary table │
+└────────────────────────────────────────┘
+
+---
 
 ## 🚀 Quick Start
+
+### Prerequisites
+
+- Linux (Ubuntu 20.04+)
+- ≥32 GB RAM, ≥8 CPU cores (for real data; development possible with less)
+- Conda or Mamba
+- PacBio HiFi reads at ≥20× coverage (≥30× recommended per Hammond et al. 2025)
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/kelto/fungus-sv.git
+git clone https://github.com/keltonjenkovguimaraes-alt/fungus-sv.git
 cd fungus-sv
 
-# Install dependencies
-pip install pysam numpy pandas scikit-learn
+# Create conda environments (one per tool group to avoid conflicts)
+conda create -n sv_align -c bioconda -c conda-forge minimap2 samtools -y
+conda create -n sv_call -c bioconda -c conda-forge sniffles=2.2 cutesv pbsv -y
+conda create -n sv_valid -c conda-forge python=3.11 numpy scipy pandas pysam pyyaml biopython samtools -y
+conda create -n sv_lar -c bioconda -c conda-forge python=3.10 flye samtools minimap2 -y
+conda create -n sv_kmers -c bioconda -c conda-forge python=3.10 jellyfish -y
+Usage
+# 1. Align reads
+conda activate sv_align
+minimap2 -t 8 -ax map-hifi -R '@RG\tID:sample\tSM:sample' ref.fasta reads.fastq.gz \
+    | samtools sort -@ 4 -o sample.sorted.bam -
+samtools index sample.sorted.bam
+conda deactivate
 
-# Optional: For full functionality
-conda install -c bioconda jellyfish longshot
-Basic Usage
+# 2. Run ICB consensus
+conda activate sv_call
+python fungus_sv/core/icb.py \
+    --bam sample.sorted.bam \
+    --reference ref.fasta \
+    --output results/variants/ \
+    --callers pbsv sniffles2 cutesv \
+    --min-callers 2
+conda deactivate
 
+# 3. Run validation
+conda activate sv_valid
 python -m valid_sv.run_validation \
-    --consensus-vcf consensus.vcf \
-    --bam sample.bam \
-    --reference reference.fasta \
-    --output validation_results/
-📥 Input Files
-Required
-File	Format	Description
-Consensus VCF	.vcf	ICB consensus SV calls (SVTYPE, END, SUPPORT required)
-Aligned BAM	.bam	Sorted + indexed reads aligned to reference
-Reference FASTA	.fasta	Reference genome with .fai index
-Optional
-File	Format	Enables	Description
-Raw FASTQ	.fastq.gz	Layers 2, 4	Unaligned reads (PacBio HiFi recommended)
-Jellyfish DB	.jf	Layer 4	Pre-built k-mer database
-📤 Output Files
+    --consensus-vcf results/variants/consensus_svs.vcf \
+    --bam sample.sorted.bam \
+    --reference ref.fasta \
+    --fastq reads.fastq.gz \
+    --output results/validation/
+conda deactivate
+📁 Repository Structure
+fungus-sv/
+├── workflow/Snakefile                 # Snakemake workflow
+├── workflow/envs/                     # Conda environment YAMLs
+├── fungus_sv/
+│   ├── core/icb.py                    # ICB consensus builder
+│   └── modules/local_assembly.py      # LAR (Flye-based)
+├── valid_sv/
+│   ├── evidence/
+│   │   ├── layer_depth.py             # Read-depth signature
+│   │   ├── layer_kmer.py              # k-mer spectrum
+│   │   ├── layer_breakpoint.py        # Split-read analysis
+│   │   └── layer_ploidy.py            # SNV het rate
+│   ├── engine/
+│   │   ├── scorer.py                  # T-score calculation
+│   │   └── fdr_estimator.py           # Mixture model FDR
+│   ├── benchmarks/
+│   │   ├── spike_in.py                # Truth set generator
+│   │   └── run_calibration.py         # Calibration runner
+│   ├── reporting/report_card.py       # Per-SV reports
+│   └── run_validation.py              # Main entry point
+├── config/config.yaml                 # Configuration
+└── tests/                             # Test data
+📚 Key References
+Parameters and methods are informed by:
 
-validation_results/
-├── validation_results.json    # Machine-readable results (T-scores, metadata)
-├── validation_summary.txt     # Human-readable summary table
-├── reports/                   # Individual SV report cards
-│   ├── SV_001.txt
-│   ├── SV_002.txt
-│   └── ...
-├── longshot_snvs.vcf         # SNV calls for ploidy analysis
-└── kmer_db/                  # Jellyfish database (if built)
-🎯 Understanding Results
-T-Score Interpretation
-T-Score	Confidence	Action
-> 0.7	HIGH	Trustworthy for publication
-0.4 - 0.7	MEDIUM	Validate with orthogonal method
-< 0.4	LOW	Consider false positive
-Example Output
-======================================================================
-SV VALIDATION SUMMARY
-======================================================================
-ID                   Type     T-Score    Confidence    Support
-----------------------------------------------------------------------
-SV1                  DEL      0.85       HIGH          3/3
-SV2                  DUP      0.62       MEDIUM        2/3
-SV3                  INS      0.31       LOW           1/3
-======================================================================
-🏗️ Architecture
-ICB Consensus VCF
-       ↓
-┌──────────────────────────────────────┐
-│         TRIANGULATION ENGINE          │
-├──────────────────────────────────────┤
-│ ✓ Layer 1: ICB Agreement (reported)   │
-│ ⚠ Layer 2: Local Assembly (LAR)      │
-│ ✓ Layer 3: Depth Signature            │
-│ ⚠ Layer 4: k-mer Spectrum            │
-│ ✓ Layer 5: Breakpoint Junctions       │
-│ ✓ Layer 6: Ploidy Confirmation        │
-└──────────────────────────────────────┘
-       ↓
- Weighted Scoring → T-score (0-1)
-       ↓
-   Report Cards + FDR Estimate
-⚙️ Command Line Options
-Argument	Default	Description
---consensus-vcf	required	Path to ICB consensus VCF
---bam	required	Aligned BAM file
---reference	required	Reference FASTA
---fastq	None	Raw FASTQ (for k-mer layer)
---output	results/validation	Output directory
---min-support	1	Minimum ICB support (1-3)
---max-svs	None	Limit number of SVs (testing)
---skip-kmer	False	Skip k-mer analysis
---jellyfish-db	None	Pre-built jellyfish DB
---threads	4	Parallel threads
-🧪 Testing
-Quick Test with Dummy Data
-# Create test VCF
-cat > test.vcf << 'EOF'
-##fileformat=VCFv4.2
-#CHROM POS ID REF ALT QUAL FILTER INFO
-#chr1 1000 SV1 N <DEL> . PASS SVTYPE=DEL;END=2000;SUPPORT=2
-#chr2 3000 SV2 N <DUP> . PASS SVTYPE=DUP;END=3500;SUPPORT=1
-EOF
+Liu et al. (2024) Nature Communications — SV caller benchmarking, ICB overlap thresholds
 
+Liu et al. (2024) Genome Biology — Multi-pipeline evaluation, merging strategies
 
+Dunn et al. (2024) Genome Biology — Joint small+structural variant evaluation (vcfdist)
 
-# Create dummy files
-touch dummy.bam dummy.bam.bai dummy.fasta dummy.fasta.fai
+Kronenberg et al. (2025) Nature Methods — Platinum Pedigree truth set, SV merging
 
-# Run pipeline
-python -m valid_sv.run_validation \
-    --consensus-vcf test.vcf \
-    --bam dummy.bam \
-    --reference dummy.fasta \
-    --output test_output/ \
-    --max-svs 2
+Hammond et al. (2025) Genome Research — HiFi small variant validation
 
-Expected Output
+Chen et al. (2023) Nature Communications — DeBreak: local assembly for SV breakpoints
 
-======================================================================
-  VALID-SV: Triangulation-Based SV Validation
-======================================================================
-  Loaded 2 SVs from consensus VCF
-  Validating 2 SVs with SUPPORT ≥ 1
-  
-  Assessing triangulability...
-    Fully triangulable: 0
-    Partially triangulable: 2
-    
-  T-Score: 0.81 (HIGH confidence)
-======================================================================
+Helal et al. (2024) Scientific Reports — SV caller evaluation across aligners
 
-📊 Evidence Layers in Detail
-Layer 1: ICB Multi-Caller Agreement
-Status: ✅ Implemented
-
-Source: VCF SUPPORT field (1-3 callers)
-
-Note: Reported but excluded from T-score
-
-Layer 2: Local Assembly Refinement
-Status: ⚠️ Stub (separate module)
-
-Tool: fungus_sv/modules/local_assembly.py
-
-Run separately before validation
-
-Layer 3: Read-Depth Signature
-Status: ⚠️ Needs real implementation
-
-Method: Window-based depth ratio (case/control)
-
-Expected output: Fold-change + significance
-
-Layer 4: k-mer Spectrum Analysis
-Status: ⚠️ Needs jellyfish integration
-
-Method: k-mer frequency comparison
-
-Requires: Raw FASTQ or pre-built .jf database
-
-Layer 5: Breakpoint Junction Analysis
-Status: ⚠️ Needs real implementation
-
-Method: Split-read + discordant pair analysis
-
-Output: Junction-supporting reads count
-
-Layer 6: Ploidy Confirmation
-Status: ⚠️ Needs longshot integration
-
-Method: SNV heterozygosity rate (haploid vs diploid)
-
-Tool: Longshot for variant calling
-
-🔧 Development Status
-Component	Status	Completion
-Pipeline orchestration	✅ Complete	100%
-VCF parsing	✅ Complete	100%
-Triangulation scoring	✅ Complete	100%
-FDR estimation	✅ Complete	80%
-Report generation	✅ Complete	100%
-Depth signature	⚠️ Stub	0%
-k-mer analysis	⚠️ Stub	0%
-Breakpoint analysis	⚠️ Stub	0%
-Ploidy analysis	⚠️ Stub	0%
-LAR integration	⚠️ Stub	0%
-Overall Progress: ~40% (Core logic complete, evidence layers pending)
-
-⚠️ Important Caveats
-DEVELOPMENT VERSION - NOT FOR PRODUCTION USE
-
-T-scores and FDR estimates are APPROXIMATE until calibrated with real data
-
-Calibrate with synthetic benchmarks before publication
-
-Experimental validation required for biological conclusions
-
-This is a hypothesis-generation tool, not a truth machine
-
-📈 Roadmap
-Phase 1 (Current) - Core Framework ✅
-Pipeline orchestration
-
-Scoring engine
-
-Report generation
-
-Test framework
-
-Phase 2 - Real Evidence Layers (In Progress)
-Depth signature implementation
-
-k-mer integration with jellyfish
-
-Breakpoint junction analysis
-
-Ploidy confirmation with longshot
-
-Phase 3 - Production Ready
-Benchmark with GIAB datasets
-
-FDR calibration
-
-Performance optimization
-
-Docker/Singularity container
-
-🤝 Contributing
-Contributions welcome! Areas needing help:
-
-Implementing real evidence layers
-
-Adding unit tests
-
-Benchmarking with real datasets
-
-Documentation improvements
-
-📚 Dependencies
-Core
-Python 3.8+
-
-pysam (BAM manipulation)
-
-numpy/pandas (data processing)
-
-scikit-learn (FDR estimation)
-
-Optional
-jellyfish (k-mer analysis)
-
-longshot (SNV calling)
-
-samtools (BAM indexing)
-
-📝 Citation
-If you use VALID-SV, please cite:
-Kelton Guimarães and Hellen Kempfer. VALID-SV: Triangulation-based 
-structural variant validation. FUNGUS-SV Project, 2025.
-FUNGUS-SV: [paper pending]
-VALID-SV: Triangulation-based SV validation [DOI pending]
+Zhang et al. (2025) bioRxiv — SMaHT mosaic SV benchmark, binomial error model
+Layer Weights: Uniform Priors
+All evidence layers are weighted equally (0.25) because no published study provides empirical weights for combining orthogonal SV evidence types. This is a known gap in the literature. Weights will be calibrated via spike-in benchmarks in a future release.
+📄 Citation
+Guimarães, K.H.A; Philippsen H.K., et al. (2026). FUNGUS-SV. In preparation.
 
 📧 Contact
-E-mail: Keltonjenkovguimaraes@gmail.com
-GitHub: Keltonjenkovguimaraes-alt
-
-Discussions: GitHub Discussions
-
-📄 License
-MIT License - See LICENSE file for details
-
-Built with 🧬 by Kelton Guimarães for the fungal genomics community
-EOF
-
-
+Kelton Jenkov Guimarães — GitHub: @keltonjenkovguimaraes-alt
+This README was written with the principle that honesty about limitations is more valuable than impressive-sounding claims. All parameters are documented with their sources or explicitly marked as uncalibrated.

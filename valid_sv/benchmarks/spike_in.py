@@ -130,6 +130,19 @@ def modify_reference(reference_path: str, svs: List[Dict],
                 if sv['start'] + i < len(chrom_seq):
                     chrom_seq[sv['start'] + i] = base
             modifications.append(sv['id'])
+        elif sv['type'] == 'INS' and sv['chrom'] in genome:
+            chrom_seq = genome[sv['chrom']]
+            # Insert random sequence at insertion point
+            import random
+            ins_seq = ''.join(random.choices(['A','C','G','T'], k=sv['size']))
+            chrom_seq[sv['start']:sv['start']] = list(ins_seq)
+            modifications.append(sv['id'])
+        elif sv['type'] == 'DUP' and sv['chrom'] in genome:
+            chrom_seq = genome[sv['chrom']]
+            # Tandem dupliction
+            dup_seq = chrom_seq[sv['start']:sv['end']]
+            chrom_seq[sv['end']:sv['end']] = dup_seq
+            modifications.append(sv['id'])
     
     # Write modified genome
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -141,7 +154,7 @@ def modify_reference(reference_path: str, svs: List[Dict],
                 f.write(seq_str[i:i+80] + '\n')
     
     print(f"  Modified reference: {output_path}")
-    print(f"  Applied {len(modifications)} modifications (DEL + INV only)")
+    print(f"  Applied {len(modifications)} modifications (DEL + INS + INV + DUP)")
     
     return output_path
 

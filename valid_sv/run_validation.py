@@ -104,6 +104,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                             max_svs: Optional[int] = None,
                             skip_kmer: bool = False,
                             jellyfish_db: Optional[str] = None,
+                            ablation: bool = False,
                             threads: int = 4) -> dict:
     """
     Run complete validation pipeline on consensus SVs.

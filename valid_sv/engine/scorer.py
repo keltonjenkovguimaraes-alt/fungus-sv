@@ -123,6 +123,9 @@ class TriangulationResult:
 DEFAULT_WEIGHTS = {
     'alignment_consensus': 0.0,     # Excluded: circular validation
     'local_assembly': 0.30,         # Highest: assembly confirms exact breakpoints (Liu Fig 3)
+# SV-MeCa (Nkouamedjo et al. 2025): XGBoost on per-caller quality features
+# outperforms uniform weighting. These uniform weights are placeholders
+# pending XGBoost training on spike-in calibration data.
     'depth_signature': 0.25,        # Independent of alignment (alignment-free)
     'kmer_spectrum': 0.25,          # Independent of alignment (alignment-free)
     'breakpoint_junction': 0.20,    # Relies on alignment SA tags (moderate)

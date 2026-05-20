@@ -224,6 +224,13 @@ def build_consensus(caller_vcfs, output_vcf, min_overlap=0.5, min_callers=2, fla
     # uses simple reciprocal overlap clustering. A future version
     # should implement vcfdist-style superclustering where nearby
     # small and structural variants are evaluated together.
+    # SV-JIM (Todd et al. 2025): density-based clustering with adaptive
+    # window sizes outperforms fixed reciprocal overlap for repetitive regions.
+    # Future: implement signal-density-based clustering windows.
+    # SV-MeCa (Nkouamedjo et al. 2025): demonstrates that ML-based
+    # feature extraction from per-caller quality metrics (QUAL, read support,
+    # strand bias) outperforms binary caller-presence encoding.
+    # Future: extract per-caller quality features for XGBoost scoring.
     # See: https://doi.org/10.1186/s13059-024-03394-5
     """
     print(f"[ICB] Building consensus from {len(caller_vcfs)} callers...")

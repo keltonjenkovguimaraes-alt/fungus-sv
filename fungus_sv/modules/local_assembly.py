@@ -96,6 +96,7 @@ def local_assemble(fastq_path: str, output_dir: str, genome_size: str = '100k',
         '--genome-size', genome_size,
         '--iterations', '2',
         '--min-overlap', '1000'
+        # DeBreak (Chen et al. 2023): min-overlap=1000 for local assembly
     ]
     
     print(f"[LAR] Flye command: {' '.join(cmd)}")
@@ -248,6 +249,8 @@ def refine_sv(bam_path: str, reference_path: str, sv_id: str,
             return {
                 'sv_id': sv_id, 'evidence_score': 0.1,
                 'verdict': 'assembly_failed',
+                # DeBreak (Chen et al. 2023): when full assembly fails, consider
+                # partial order alignment (POA) via wtdbg2 as fallback
                 'details': f'Flye error: {str(e)[:200]}',
                 'refined_start': start, 'refined_end': end, 'confidence': 0.0
             }

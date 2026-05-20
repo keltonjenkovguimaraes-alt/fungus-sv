@@ -124,19 +124,19 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
     Returns:
         DepthEvidence with verdict and scores
     """
-    # FIX: Dynamic flank for small SVs
-    # For SVs <500 bp, large flanks drown the signal
     sv_size = abs(end - start)
-    if sv_size < 50:
+    # Liu et al. (2024) Nature comms: most SVs cluster 50-400 bp.
+    # Depth analysis unreliable below 100 bp.
+    if sv_size < 100:
         return DepthEvidence(
             sv_id=sv_id, sv_type=sv_type,
             sv_chrom=chrom, sv_start=start, sv_end=end,
             verdict=DepthVerdict.NOT_APPLICABLE,
             depth_ratio=1.0, flank_mean=0, region_mean=0,
             evidence_score=0.0,
-            details=f"SV too small for depth analysis ({sv_size} bp < 50 bp minimum)"
+            details=f"SV too small for depth analysis ({sv_size} bp < 100 bp minimum)"
         )
-    elif sv_size < 100:
+    elif sv_size < 200:
         flank_size = min(flank_size, max(200, sv_size * 3))
     elif sv_size < 500:
         flank_size = min(flank_size, max(500, sv_size * 2))

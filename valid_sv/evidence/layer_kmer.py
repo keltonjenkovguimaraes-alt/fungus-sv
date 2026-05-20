@@ -54,6 +54,9 @@ def build_kmer_database(fastq_path: str, output_dir: str = "/tmp/valid_sv_kmers"
     Call ONCE per dataset, not per SV.
     
     Returns path to the .jf file.
+    # PAV (Ebert et al. 2021) and SV-JIM (Todd et al. 2025) use k=31
+    # for k-mer-based SV analysis. Standard for mammalian genomes;
+    # optimal k for fungal genomes (smaller, different GC) not established.
     """
     global _JELLYFISH_DB
     

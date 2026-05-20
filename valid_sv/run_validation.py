@@ -425,6 +425,8 @@ def main():
                        help='Max SVs to validate (for testing)')
     parser.add_argument('--skip-kmer', action='store_true',
                        help='Skip k-mer layer (if jellyfish unavailable)')
+    parser.add_argument('--ablation', action='store_true',
+                       help='Run each validation layer individually for ablation study')
     parser.add_argument('--jellyfish-db', default=None,
                        help='Pre-built jellyfish database (.jf)')
     parser.add_argument('--threads', type=int, default=4,
@@ -441,6 +443,7 @@ def main():
         min_support=args.min_support,
         max_svs=args.max_svs,
         skip_kmer=args.skip_kmer,
+        ablation=args.ablation,
         jellyfish_db=args.jellyfish_db,
         threads=args.threads,
     )

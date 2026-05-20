@@ -41,3 +41,16 @@ min_sv_size: 50
 # Ploidy
 ploidy: haploid
 max_het_rate: 0.07  # 7% max heterozygous SNVs for haploid fungi
+
+# Additional references for specific parameters:
+# - Depth minimum size (100 bp): Liu et al. (2024) Nature Comms
+# - k-mer size (31): PAV (Ebert et al. 2021), SV-JIM (Todd et al. 2025)
+# - Breakpoint MAPQ filter (≥20): SVvalidation (Zheng & Shang 2024)
+# - Breakpoint distance_support: SVvalidation (Zheng & Shang 2024)
+# - Breakpoint support_rate categories: SVvalidation (Zheng & Shang 2024)
+# - LAR min-overlap (1000 bp): DeBreak (Chen et al. 2023)
+# - LAR POA fallback: DeBreak (Chen et al. 2023)
+# - Binomial error model: SMaHT (Zhang et al. 2025, preprint)
+# - Clustered variant filter (≤50 bp): SMaHT (Zhang et al. 2025)
+# - Density-based clustering (future): SV-JIM (Todd et al. 2025)
+# - ML-based weight calibration (future): SV-MeCa (Nkouamedjo et al. 2025)

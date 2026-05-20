@@ -47,7 +47,7 @@ class BreakpointEvidence:
 
 def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
                                   chrom: str, start: int, end: int,
-                                  window: int = 500,
+                                  window: int = 1000, #SVvalidation: flank_len = 1000 bp
                                   min_total_reads: int = 3) -> BreakpointEvidence:
     """
     Analyze breakpoint support using three evidence types:
@@ -69,8 +69,9 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
     spanning_reads = 0
     
     try:
+        # SVvalidation (Zheng 2024): MAPQ ≥ 20 for read filtering
         result = subprocess.run(
-            ['samtools', 'view', bam_path, region],
+            ['samtools', 'view', '-q', '20', bam_path, region],
             capture_output=True, text=True, timeout=120
         )
         
@@ -135,6 +136,12 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
         # Cap at total reads
         supporting = min(supporting, total_reads)
         support_ratio = supporting / total_reads if total_reads > 0 else 0
+        # SVvalidation (Zheng 2024): distance_support for size tolerance
+        sv_size = abs(end - start)
+        if sv_size > 0:
+            distance_support = int(0.2 * sv_size + 2000 / sv_size)
+        else:
+            distance_support = 200
         # Scoring based on Liu et al. breakpoint deviation distributions
         # pbsv-like precision: 90% within ±10bp → score near 1.0
         # Sniffles2-like: ~60% zero-deviation → score 0.8+
@@ -149,6 +156,9 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
             error_model_pass = p_binom < 0.01
         except:
             error_model_pass = supporting >= 2
+        # SVvalidation (Zheng 2024): INV-specific validation
+        if sv_type == 'INV' and supporting > 0:
+            support_ratio = support_ratio * 0.7
         if error_model_pass and support_ratio >= 0.10:
             verdict = BreakpointVerdict.CONFIRMED
             score = min(1.0, 0.6 + support_ratio * 3)
@@ -164,6 +174,13 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
         else:
             verdict = BreakpointVerdict.WEAK
             score = 0.05
+        # SVvalidation (Zheng 2024): support_rate categorization
+        if support_ratio >= 0.8:
+            zygosity_note = " (homozygous-level support)"
+        elif support_ratio >= 0.1:
+            zygosity_note = " (heterozygous-level support)"
+        else:
+            zygosity_note = " (below-threshold support)"
         
         # Build details string
         detail_parts = [

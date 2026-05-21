@@ -55,7 +55,7 @@ def run_sv_caller(caller, bam, reference, output_dir, threads=4):
         ],
         'svim': [
             'svim', 'alignment', output_dir, bam, reference,
-            str(threads)
+            
         ]
 
     }

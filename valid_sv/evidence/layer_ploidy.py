@@ -44,9 +44,15 @@ def estimate_het_rate_from_bam(bam_path: str, reference_path: str,
             continue
         
         bases = parts[7].upper()
-        # Count A, C, G, T in the pileup column
-        base_counts = {b: bases.count(b) for b in 'ACGT'}
-        total_bases = sum(base_counts.values())
+        # Count A, C, G, T, and reference matches (. and ,)
+        base_counts = {
+            'A': bases.count('A'),
+            'C': bases.count('C'),
+            'G': bases.count('G'),
+            'T': bases.count('T'),
+            'REF': bases.count('.') + bases.count(',')
+        }
+        total_bases = sum(base.counts.values())
         
         if total_bases < 5:
             continue

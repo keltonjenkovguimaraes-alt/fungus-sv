@@ -52,7 +52,12 @@ def run_sv_caller(caller, bam, reference, output_dir, threads=4):
             '--diff_ratio_merging_DEL', '0.3',
             '--min_support', '2',
             '--threads', str(threads)
+        ],
+        'svim': [
+            'svim', 'alignment', output_dir, bam, reference,
+            str(threads)
         ]
+
     }
 
     if caller not in callers:
@@ -60,6 +65,9 @@ def run_sv_caller(caller, bam, reference, output_dir, threads=4):
         return None
 
     vcf_path = f'{output_dir}/{caller}_svs.vcf'
+    # Remove old VCF to avoid overwrite errors
+    if os.path.exists(vcf_path):
+        os.remove(vcf_path)
 
     print(f"[ICB] Running {caller}...")
 
@@ -149,7 +157,6 @@ def parse_sv_record(line):
     return {
         'chrom': chrom, 'pos': pos, 'end': end, 'id': sv_id,
         'svtype': svtype, 'svlen': svlen, 'support': support,
-        'genotype': genotype, 'info': info, 'caller': None
     }
 
 
@@ -374,7 +381,7 @@ def main():
     parser.add_argument('--reference', required=True, help='Reference FASTA')
     parser.add_argument('--output', required=True, help='Output directory')
     parser.add_argument('--callers', nargs='+',
-                       default=['pbsv', 'sniffles2', 'cutesv'],
+                       default=['pbsv', 'sniffles2', 'cutesv', 'svim'],
                        help='SV callers to use (default: pbsv sniffles2 cutesv)')
     parser.add_argument('--min-callers', type=int, default=2,
                        help='Minimum callers for consensus (default: 2)')

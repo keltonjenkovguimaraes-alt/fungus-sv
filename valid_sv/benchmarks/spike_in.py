@@ -162,35 +162,70 @@ def modify_reference(reference_path: str, svs: List[Dict],
 def simulate_reads(modified_ref: str, output_fastq: str,
                    coverage: int = 30, read_n50: int = 15000):
     """
-    Simulate PacBio HiFi reads using pbsim3 or badread.
-    Falls back to a simple simulation if tools unavailable.
+    Simulate PacBio HiFi reads from modified reference.
+    Uses internal HiFi simulator (99.9% accuracy) for reliability.
     """
-    # Check for pbsim3
-    if shutil.which('pbsim3'):
-        print("  Using pbsim3 for read simulation...")
-        cmd = (f'pbsim --strategy wgs --method errhmm '
-               f'--errhmm {os.path.expanduser("~")}/miniforge3/envs/sv_valid/data/ERRHMM-RSII.model '
-               f'--depth {coverage} '
-               f'--genome {modified_ref} '
-               f'--length-min 5000 --length-mean {read_n50} '
-               f'--prefix {output_fastq}')
-        subprocess.run(cmd, shell=True, check=True)
-        return output_fastq + '.fastq'
+    import random
+    random.seed(42)
     
-    # Check for badread
-    if shutil.which('badread'):
-        print("  Using badread for read simulation...")
-        cmd = (f'badread simulate --reference {modified_ref} '
-               f'--quantity {coverage}x --length {read_n50},5000 '
-               f'--error 0.001,0,0.005 --qscore 30,2 '
-               f'| gzip > {output_fastq}.gz')
-        subprocess.run(cmd, shell=True, check=True)
-        return output_fastq + '.gz'
+    print(f"  Generating {coverage}x HiFi-like reads (99.9% accuracy)...")
     
-    print("  WARNING: No read simulator found (pbsim3 or badread)")
-    print("  Install: conda install -c bioconda pbsim3")
-    return None
-
+    # Read modified reference
+    contigs = {}
+    current = None
+    with open(modified_ref) as f:
+        for line in f:
+            if line.startswith('>'):
+                current = line[1:].split()[0]
+                contigs[current] = []
+            elif current:
+                contigs[current].append(line.strip())
+    
+    for c in contigs:
+        contigs[c] = ''.join(contigs[c])
+    
+    genome_size = sum(len(s) for s in contigs.values())
+    target_bases = genome_size * coverage
+    reads = []
+    read_id = 0
+    
+    while sum(len(r[1]) for r in reads) < target_bases:
+        contig_name = random.choices(list(contigs.keys()),
+                                      weights=[len(s) for s in contigs.values()])[0]
+        contig_seq = contigs[contig_name]
+        read_len = int(random.gauss(read_n50, read_n50 * 0.47))
+        read_len = max(5000, min(50000, read_len))
+        
+        if len(contig_seq) > read_len:
+            start = random.randint(0, len(contig_seq) - read_len)
+            read_seq = list(contig_seq[start:start + read_len])
+            # HiFi 0.1% error rate
+            for i in range(len(read_seq)):
+                if random.random() < 0.001:
+                    read_seq[i] = random.choice([b for b in 'ACGT' if b != read_seq[i]])
+            reads.append((f'read_{read_id}', ''.join(read_seq)))
+            read_id += 1
+    
+    # Write FASTQ
+    fastq_path = output_fastq + '.fastq'
+    with open(fastq_path, 'w') as f:
+        for name, seq in reads:
+            qual = 'I' * len(seq)
+            f.write(f'@{name}\n{seq}\n+\n{qual}\n')
+    
+    actual_cov = sum(len(r[1]) for r in reads) / genome_size
+    print(f"  Generated {len(reads)} reads, {actual_cov:.1f}x coverage")
+    
+    # Compress
+    import gzip
+    gz_path = output_fastq + '.fastq.gz'
+    with open(fastq_path, 'rb') as f_in:
+        with gzip.open(gz_path, 'wb') as f_out:
+            f_out.write(f_in.read())
+    os.remove(fastq_path)
+    print(f"  Compressed: {gz_path}")
+    
+    return gz_path
 
 def evaluate_results(truth_vcf: str, pipeline_vcf: str, 
                      json_results: str) -> Dict:

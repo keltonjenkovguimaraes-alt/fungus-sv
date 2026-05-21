@@ -149,7 +149,7 @@ def main():
     # Step 2: Align reads
     print("\n[2/4] Aligning reads...")
     ref = f'{args.output}/modified_reference.fasta'
-    reads = f'{args.output}/simulated_reads.fastq'
+    reads = f'{args.output}/simulated_reads.fastq.gz'
     bam = f'{args.output}/alignment/calib.sorted.bam'
     
     if os.path.exists(reads):
@@ -172,7 +172,7 @@ def main():
         '--bam', bam,
         '--reference', args.reference,
         '--output', args.output,
-        '--callers', 'sniffles2', 'cutesv',
+        '--callers', 'sniffles2', 'cutesv', 'svim',
         '--min-callers', '2',
         '--threads', str(args.threads)
     ], "ICB consensus")

@@ -374,4 +374,66 @@ This methodology is part of the FUNGUS-SV pipeline documentation. The
 pipeline is available at
 https://github.com/keltonjenkovguimaraes-alt/fungus-sv
 
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\hypertarget{local-assembly-refinement-lar-tier-2-benchmark}{%
+\subsection{9. Local Assembly Refinement (LAR) --- Tier 2
+Benchmark}\label{local-assembly-refinement-lar-tier-2-benchmark}}
+
+\hypertarget{principle-1}{%
+\subsubsection{9.1 Principle}\label{principle-1}}
+
+When a full genome assembly is unavailable or computationally
+prohibitive, Local Assembly Refinement (LAR) provides per-SV
+assembly-based validation. LAR extracts reads from the region flanking a
+candidate SV, performs de novo assembly with Flye, and aligns the
+assembled contig back to the reference genome. This approach is
+independent of the read-alignment signals used by SV callers.
+
+\hypertarget{methodology-1}{%
+\subsubsection{9.2 Methodology}\label{methodology-1}}
+
+```bash \# Run LAR on top-ranked SVs conda activate sv\_lar python
+fungus\_sv/modules/local\_assembly.py\\
+--consensus consensus\_svs.vcf\\
+--bam reads\_to\_ref.sorted.bam\\
+--reference reference.fasta\\
+--output lar\_results.vcf\\
+--threads 4 --min-reads 5 --max-svs 10 9.3 Validation Results (A.
+baumannii, 12 strains) LAR was tested on the top 3 HIGH-confidence SVs
+from each of 12 A. baumannii strains (39 SVs total):
+
+Verdict Count Percentage Confirmed 23 59\% Partial confirmation 12 31\%
+Failed 4 10\% Any LAR support 35 90\% 9.4 Interpretation LAR Confirmed
+(59\%): The assembled contig independently validates the SV with high
+confidence. These SVs are suitable for experimental follow-up.
+
+LAR Partial (31\%): The assembly provides some support but with lower
+confidence. These SVs are candidates for PCR validation.
+
+LAR Failed (10\%): Insufficient reads or assembly failure. These SVs may
+be in repetitive regions or have low local coverage.
+
+9.5 Integration with T-Score LAR can be used as an additional validation
+layer in the FUNGUS-SV triangulation engine. When LAR confirms an SV,
+the T-score increases, reflecting the strength of assembly-based
+evidence. Current FUNGUS-SV weights LAR at 0.25 (uniform prior).
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{9}
+\tightlist
+\item
+  Benchmark Tier Summary Tier Method Independence Availability Tier 1
+  Genome-wide assembly (hifiasm + svim-asm) Full --- no read alignment
+  used Requires ≥30× HiFi coverage Tier 2 Local assembly (LAR) Full ---
+  per-SV de novo assembly Built into FUNGUS-SV Tier 3 Orthogonal layers
+  (depth, k-mer, breakpoint) Partial --- some layers alignment-free
+  Built into FUNGUS-SV Tier 4 ICB consensus (Sniffles2 + cuteSV) Low ---
+  same alignment input Built into FUNGUS-SV For non-model organisms
+  where no external benchmark exists, Tiers 2-4 provide a comprehensive
+  internal validation framework. Agreement across multiple tiers
+  provides strong evidence that a candidate SV is genuine.
+\end{enumerate}
+
 \end{document}

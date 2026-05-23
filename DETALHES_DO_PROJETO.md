@@ -91,7 +91,7 @@ A análise de ablação demonstrou que a combinação de duas ou mais camadas de
 
 ---
 
-## Resultados esperados
+### Resultados esperados
 
 1. **Detecção de SVs em comparações entre espécies**: O pipeline deve detectar deleções, inserções, duplicações e inversões quando os reads provêm de um isolado diferente da referência. Nas validações iniciais com *Acinetobacter*, foram detectados 34 SVs consenso (todos deleções) em 5 comparações interespecíficas.
 

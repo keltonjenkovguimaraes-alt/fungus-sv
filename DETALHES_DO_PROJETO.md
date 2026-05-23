@@ -82,7 +82,12 @@ As pontuações das camadas são combinadas com pesos uniformes (0,25 cada) — 
 
 ### 5. Validação experimental do pipeline
 
-O pipeline foi validado com dados reais: 19.568 reads PacBio HiFi (N50 ~17 kb, cobertura ~82×) de *Acinetobacter baumannii* ATCC 19606 (DRR718942) alinhados contra genomas de referência de 5 espécies de *Acinetobacter*. Para cada comparação, o pipeline completo foi executado (alinhamento → ICB → validação → relatório). A análise de ablação mediu a contribuição individual de cada camada para o T-score final.
+Validação experimental do pipeline
+O pipeline foi validado com dados reais: 19.568 reads PacBio HiFi (N50 ~17 kb, cobertura ~82×) de *Acinetobacter baumannii* ATCC 19606 (DRR718942) alinhados contra genomas de referência de 12 linhagens clínicas de *A. baumannii* (AB30, MRSN15313, DETAB-E51, XH1056, UC23022, 6080, 280820, 966CSF, Aci4735, AR_0083, XH1037, SRM25) e 5 espécies adicionais de *Acinetobacter* (*A. bouvetii*, *A. lwoffii*, *A. cumulans*, *A. lanii*, *A. larvae*). 
+
+Para cada uma das 17 comparações, o pipeline completo foi executado (alinhamento → ICB → validação → relatório). No total, foram detectados 860 SVs consenso nas comparações intraespecíficas (média de 72 por linhagem), com 85% (727/860) classificados como ALTA confiança (T ≥ 0,6). A validação por LAR (Local Assembly Refinement) confirmou 59% (23/39) dos SVs de topo testados e ofereceu suporte parcial para 31% adicionais, totalizando 90% de suporte. 
+
+A análise de ablação demonstrou que a combinação de duas ou mais camadas de evidência produz chamadas de ALTA confiança, enquanto SVs suportados por uma única camada recebem pontuação BAIXA. A estratificação por tamanho revelou que 100% dos SVs ≥100 bp pontuam ALTO e 100% dos SVs <100 bp pontuam BAIXO, consistente com a expectativa de que SVs pequenos têm suporte de validação limitado.
 
 ---
 

@@ -19,7 +19,7 @@ FUNGUS-SV detects structural variants (SVs ≥50 bp) in haploid genomes using Pa
 
 ## 📊 Proven Performance
 
-### Within-Species: A. baumannii ATCC 19606 vs. 6 Clinical Strains
+### Within-Species: A. baumannii ATCC 19606 vs. 12 Clinical Strains
 
 | Strain | ICB SVs | HIGH (T≥0.6) | MED | WEAK | % HIGH |
 |--------|---------|-------------|-----|------|--------|

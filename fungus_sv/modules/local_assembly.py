@@ -182,7 +182,7 @@ def parse_paf_for_breakpoints(paf_path: str) -> Tuple[int, int, float, int]:
 
 def refine_sv(bam_path: str, reference_path: str, sv_id: str,
               sv_type: str, chrom: str, start: int, end: int,
-              flank: int = 2000, min_reads: int = 30,
+              flank: int = 2000, min_reads: int = 5,
               min_coverage: float = 20.0,
               threads: int = 4, work_dir: Optional[str] = None,
               cleanup: bool = False) -> Dict:

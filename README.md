@@ -48,6 +48,29 @@ FUNGUS-SV is a **hypothesis-generation tool under active development.** It is NO
 
 | # | Finding |
 |---|---------|
+
+## 📊 Results Visualization
+
+### SV Detection Across 12 A. baumannii Strains
+
+![SVs per Strain](docs/figures/figure1_svs_per_strain.png)
+
+### Confidence Distribution (860 Total SVs)
+
+![Confidence Pie](docs/figures/figure2_confidence_pie.png)
+
+### T-Score vs. SV Size
+
+![T-Score vs Size](docs/figures/figure3_tscore_vs_size.png)
+
+### LAR Validation Results
+
+![LAR Results](docs/figures/figure4_lar_results.png)
+
+### Pipeline Performance Summary
+
+![Summary Infographic](docs/figures/figure5_summary_infographic.png)
+
 | 1 | **860 SVs detected across 12 strains** (mean: 72 per strain) |
 | 2 | **85% of all SVs score HIGH confidence** (T ≥ 0.6) |
 | 3 | **100% of SVs ≥100 bp score HIGH** — depth + breakpoint layers confirm |

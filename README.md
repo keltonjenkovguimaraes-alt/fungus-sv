@@ -191,3 +191,63 @@ Ploidy	Uses mpileup fallback; Longshot unstable
 Guimarães, K.H.A. et al. (2026). FUNGUS-SV: A triangulation-based structural variant discovery and validation pipeline for haploid genomes. In preparation.
 
 📧 GitHub: @keltonjenkovguimaraes-alt
+
+---
+
+## 🦠 Previous Validation: *Acinetobacter baumannii* (Bacterial)
+
+The pipeline was originally validated on 12 clinical *A. baumannii* strains against ATCC 19606 reference.
+
+### Within-Species: *A. baumannii* ATCC 19606 vs 12 Clinical Strains
+
+| Strain | ICB SVs | HIGH | MED | WEAK | % HIGH |
+|--------|---------|------|-----|------|--------|
+| AB30 | 107 | 93 | 2 | 12 | 87% |
+| SRM25 | 85 | 77 | 1 | 7 | 91% |
+| Aci4735 | 75 | 60 | 4 | 11 | 80% |
+| MRSN15313 | 74 | 56 | 4 | 14 | 76% |
+| XH1056 | 71 | 65 | 0 | 6 | 92% |
+| UC23022 | 73 | 61 | 0 | 12 | 84% |
+| 6080 | 69 | 64 | 1 | 4 | 93% |
+| DETAB-E51 | 68 | 59 | 0 | 9 | 87% |
+| AR_0083 | 68 | 51 | 0 | 17 | 75% |
+| XH1037 | 64 | 57 | 1 | 6 | 89% |
+| 966CSF | 60 | 47 | 1 | 12 | 78% |
+| 280820 | 46 | 37 | 0 | 9 | 80% |
+| **TOTAL** | **860** | **727** | **14** | **119** | **85%** |
+
+### Cross-Species: *A. baumannii* vs 5 *Acinetobacter* spp.
+
+| Species | ICB SVs |
+|---------|---------|
+| *A. lanii* | 11 |
+| *A. cumulans* | 9 |
+| *A. lwoffii* | 8 |
+| *A. bouvetii* | 5 |
+| *A. larvae* | 1 |
+| **TOTAL** | **34** |
+
+### Key Bacterial Findings
+- **860 SVs across 12 strains** (mean: 72 per strain)
+- **85% HIGH confidence** (T ≥ 0.6)
+- **100% of SVs ≥100 bp score HIGH** — depth + breakpoint layers confirm
+- **Within-species finds 25× more SVs** than cross-species (860 vs. 34)
+- **ICB consensus reduces raw calls by ~50%** — removes false positives
+
+---
+
+## 🔬 Cross-Kingdom Summary: FUNGUS-SV Performance
+
+| Metric | Bacteria (A. baumannii) | Fungi (S. cerevisiae) |
+|--------|-------------------------|------------------------|
+| Strains tested | 12 clinical | 5 reference |
+| Mean SVs/strain | 72 | 259 |
+| HIGH confidence rate | 85% | 45% |
+| Best strain | 6080 (93%) | SX2 (52%) |
+| Dominant SV type | DEL | DEL |
+| Genome size | ~4 Mb | ~12 Mb |
+| Reads | PacBio HiFi | PacBio HiFi |
+| Callers | Sniffles2 + cuteSV (v0.6) | Sniffles2 + cuteSV + SVIM (v0.8) |
+
+**FUNGUS-SV works across both bacterial and fungal haploid genomes**, demonstrating the generalizability of the triangulation approach.
+

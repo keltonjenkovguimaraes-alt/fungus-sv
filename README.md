@@ -1,5 +1,7 @@
 # 🧬 FUNGUS-SV
 
+🌐 **Interactive Report:** [fungus-sv.netlify.app](https://fungus-sv.netlify.app)
+
 **A structural variant discovery and triangulation-based validation pipeline for haploid fungal genomes using PacBio HiFi reads.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

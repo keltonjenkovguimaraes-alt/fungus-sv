@@ -188,6 +188,15 @@ class TriangulationScorer:
         # Filter out alignment_consensus unless explicitly included (circular validation)
         available_layers = [l for l in layer_results 
                           if l.available and (self.include_consensus or l.layer_name != 'alignment_consensus')]
+
+        # INV-specific handling: only breakpoint (+ assembly if available) layers contribute
+        # All 11 CICC-1445 vs S288C inversions confirmed by split reads despite T=0.167
+        # Depth and k-mer layers are structurally silent for balanced inversions
+        if sv_type == "INV":
+            inv_layers = [l for l in available_layers
+                         if l.layer_name in ["breakpoint_junction", "local_assembly"]]
+            if inv_layers:
+                available_layers = inv_layers
         
         if not available_layers:
             # No evidence at all

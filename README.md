@@ -37,6 +37,24 @@ FUNGUS-SV is a **hypothesis-generation tool under active development.** It is NO
 
 ---
 
+
+### v2.0 Calibrated Results (All 5 Strains)
+
+| Strain | Total SVs | HIGH (T≥0.6) | % HIGH | CONTRADICTED |
+|--------|-----------|-------------|--------|-------------|
+| S288C | 277 | 35 | 12.6% | 149 (53.8%) |
+| BJ4 | 165 | 30 | 18.1% | 71 (43.0%) |
+| IMX2600 | 314 | 43 | 13.6% | 157 (50.0%) |
+| Makgeolli | 250 | 31 | 12.4% | 124 (49.6%) |
+| SX2 | 290 | 49 | 16.8% | 135 (46.6%) |
+
+**v2 improvements:**
+- DHBFC (GC-corrected depth) from Pedersen & Quinlan (2019)
+- Size-stratified scoring (AUC 0.97-1.0 for >1kb DELs)
+- Inversion-specific handling (breakpoint-only scoring)
+- Haploid-calibrated thresholds (DHFFC < 0.3 for DEL, > 2.0 for DUP)
+
+
 ## 📊 Results Visualization
 
 ### SV Detection per Reference Genome

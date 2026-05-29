@@ -197,41 +197,41 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
     # Determine verdict based on SV type and depth ratio
     if sv_type == 'DEL':
         # True deletion: coverage drops in the deleted region
-        if depth_ratio < 0.3:  # Haploid calibrated: DHFFC < 0.3 = strong DEL
+        if combined_ratio < 0.3:  # Haploid calibrated: combined < 0.3 = strong DEL
             verdict = DepthVerdict.CONSISTENT
-            score = min(1.0, (0.25 - depth_ratio) * 4 + 0.8)  # 0.8-1.0 range
-            details = f"Strong depth drop (ratio={depth_ratio:.3f}); supports deletion"
-        elif depth_ratio < 0.7:  # Haploid calibrated: 0.3 <= DHFFC < 0.7 = weak DEL
+            score = min(1.0, (0.25 - combined_ratio) * 4 + 0.8) * size_factor  # 0.8-1.0 range
+            details = f"Strong depth drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports deletion"
+        elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.CONSISTENT
-            score = 0.6 + (0.5 - depth_ratio) * 1.6  # 0.6-0.8 range
-            details = f"Moderate depth drop (ratio={depth_ratio:.3f}); weakly supports deletion"
-        elif depth_ratio > 0.80:  # Near-normal or increased depth
+            score = (0.6 + (0.5 - combined_ratio) * 1.6) * size_factor  # 0.6-0.8 range
+            details = f"Moderate depth drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports deletion"
+        elif combined_ratio > 0.80:  # Near-normal or increased depth
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
-            details = f"Normal depth in region (ratio={depth_ratio:.3f}); contradicts deletion"
+            details = f"Normal depth (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); contradicts deletion"
         else:
             verdict = DepthVerdict.AMBIGUOUS
             score = 0.3
-            details = f"Intermediate depth (ratio={depth_ratio:.3f}); ambiguous"
+            details = f"Intermediate depth (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); ambiguous"
     
     elif sv_type == 'DUP':
         # True tandem duplication: coverage increases
-        if depth_ratio > 2.0:  # Haploid calibrated: DHFFC > 2.0 = strong DUP
+        if combined_ratio > 2.0:  # Haploid calibrated: combined > 2.0 = strong DUP
             verdict = DepthVerdict.CONSISTENT
-            score = min(1.0, (depth_ratio - 1.0) * 0.8)  # 0.4-1.0 range
-            details = f"Coverage increase (ratio={depth_ratio:.3f}); supports duplication"
-        elif depth_ratio > 1.3:  # Haploid calibrated: 1.3 < DHFFC <= 2.0 = weak DUP
+            score = min(1.0, (combined_ratio - 1.0) * 0.8) * size_factor  # 0.4-1.0 range
+            details = f"Coverage increase (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports duplication"
+        elif combined_ratio > 1.3:  # Haploid calibrated: 1.3 < combined <= 2.0 = weak DUP
             verdict = DepthVerdict.CONSISTENT
-            score = 0.5 + (depth_ratio - 1.2) * 1.67
-            details = f"Modest coverage increase (ratio={depth_ratio:.3f}); weakly supports"
+            score = (0.5 + (combined_ratio - 1.2) * 1.67) * size_factor
+            details = f"Modest coverage increase (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports"
         elif depth_ratio < 0.80:
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
-            details = f"Coverage drop (ratio={depth_ratio:.3f}); contradicts duplication"
+            details = f"Coverage drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); contradicts duplication"
         else:
             verdict = DepthVerdict.AMBIGUOUS
             score = 0.3
-            details = f"Near-normal coverage (ratio={depth_ratio:.3f}); ambiguous"
+            details = f"Near-normal coverage (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); ambiguous"
     
     elif sv_type == 'INS':
         # Insertions: depth in flanking regions should be normal
@@ -240,7 +240,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
             verdict = DepthVerdict.CONSISTENT
             score = 0.7
             details = f"Normal depth (ratio={depth_ratio:.3f}); consistent with insertion"
-        elif depth_ratio < 0.7:  # Haploid calibrated: 0.3 <= DHFFC < 0.7 = weak DEL
+        elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
             details = f"Depth drop (ratio={depth_ratio:.3f}); suggests deletion, not insertion"

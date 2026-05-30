@@ -87,3 +87,14 @@ min_sv_size: 50
 # Ploidy
 ploidy: haploid
 max_het_rate: 0.07  # 7% max heterozygous SNVs for haploid fungi
+
+# Local Assembly Refinement (LAR)
+# Regional Flye assembly for definitive SV confirmation
+# Tested 30 May 2026: 4/4 SVs confirmed, <500 MB RAM, 2-15 min per SV
+lar:
+  conda_env: "sv_lar"
+  flank_size: 3000
+  min_reads: 50
+  threads: 2
+  timeout: 1800  # 30 minutes per SV
+  enabled_by_default: false  # Use --lar flag to enable

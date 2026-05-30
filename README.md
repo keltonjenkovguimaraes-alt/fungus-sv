@@ -155,6 +155,7 @@ cd fungus-sv
 conda create -n sv_align -c bioconda -c conda-forge minimap2 samtools -y
 conda create -n sv_call -c bioconda -c conda-forge sniffles=2.2 cutesv svim bcftools -y
 conda create -n sv_valid -c conda-forge -c bioconda python=3.11 numpy scipy pandas pysam pyyaml matplotlib -y
+conda create -n sv_lar -c bioconda flye minimap2 samtools -y
 Usage
 # 1. Align reads to reference
 conda activate sv_align
@@ -173,6 +174,12 @@ PYTHONPATH=. python -m valid_sv.run_validation \
     --consensus-vcf results/consensus_svs.vcf \
     --bam sample.sorted.bam --reference ref.fasta --fastq reads.fastq.gz \
     --output results/validation/ --threads 4
+
+# 3b. Validate with LAR (Local Assembly Refinement) — definitive proof
+PYTHONPATH=. python -m valid_sv.run_validation \
+    --consensus-vcf results/consensus_svs.vcf \
+    --bam sample.sorted.bam --reference ref.fasta --fastq reads.fastq.gz \
+    --output results/validation_lar/ --threads 4 --lar
 📚 Parameter Sources
 Parameter	Value	Source
 ICB min_overlap	0.5	Liu et al. (2024) Genome Biology

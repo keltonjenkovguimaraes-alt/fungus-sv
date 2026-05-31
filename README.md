@@ -22,7 +22,7 @@ FUNGUS-SV is a **hypothesis-generation tool under active development.** NOT for 
 
 FUNGUS-SV detects structural variants (SVs) in haploid fungal genomes using PacBio HiFi long reads. It combines a **three-caller consensus** (Sniffles2 + cuteSV + SVIM) with a **five-layer triangulation validation system** that scores each SV based on orthogonal evidence: read depth, k-mer spectrum, breakpoint junctions, local assembly, and ploidy.
 
-The pipeline was calibrated and validated on *Saccharomyces cerevisiae* CICC-1445 against five reference strains (S288C, BJ4, IMX2600, Makgeolli, SX2) using genome-wide depth analysis (DHFFC/DHBFC), split-read junction detection, and manual curation with Samplot.
+The pipeline was calibrated and validated on *Saccharomyces cerevisiae* CICC-1445 against five reference strains (S288C, BJ4, IMX2600, Makgeolli, SX2) using genome-wide depth analysis (DHFFC/DHBFC), split-read junction detection, manual curation with Samplot, and local assembly refinement (LAR).
 
 ---
 
@@ -32,7 +32,7 @@ The pipeline was calibrated and validated on *Saccharomyces cerevisiae* CICC-144
 
 **Data:** PacBio HiFi reads (SRR18210299, 274,915 reads, ~20 kb N50)  
 **Callers:** Sniffles2 + cuteSV + SVIM (ICB consensus, ≥2 agreement)  
-**Validation:** 5-layer triangulation + orthogonal depth/split-read analysis
+**Validation:** 5-layer triangulation + orthogonal depth/split-read analysis + LAR
 
 #### SV Detection Summary
 
@@ -70,8 +70,26 @@ After integrating DHBFC (GC-corrected depth), size-stratified scoring, and haplo
 
 ---
 
-## 🏗️ Pipeline Architecture
+## 🔬 LAR: Local Assembly Refinement (Standalone)
 
+For **definitive proof** of an SV, LAR assembles reads from a single SV region using Flye. Unlike whole-genome assembly, LAR uses <500 MB RAM and completes in 2–15 minutes.
+
+```bash
+conda activate sv_lar
+python valid_sv/evidence/layer_lar.py
+LAR Validation Results (30 May 2026)
+Tested on CICC-1445 against S288C, BJ4, and SX2 references:
+
+Locus	Type	Size	Strain	Verdict	Reads	RAM	Time
+YBL005W-B (Ty2)	DEL	5.9 kb	S288C	✅ confirmed	202	<200 MB	2 min
+chrVII multi-gene	DEL	55.7 kb	S288C	⚠️ partial	581	<300 MB	4 min
+SX2 chrII	INV	430 kb	SX2	✅ confirmed	6,448	<500 MB	13 min
+BJ4 chrXII	INV	205 kb	BJ4	✅ confirmed	3,552	<400 MB	10 min
+How it works: LAR extracts reads mapping to the SV region ± 3 kb, assembles them with Flye, aligns the contig back to the reference with minimap2, and parses the CIGAR string for deletion gaps or opposite-strand alignment (inversion). An assembled contig spanning a breakpoint is the computational equivalent of a PCR product.
+
+chrVII note: The 55.7 kb region contains multiple deletions; LAR found the largest single gap (23.9 kb). The 35 affected genes include TIF4631, GTR2, ERG1, BUB1, UBR1, and CRH1.
+
+🏗️ Pipeline Architecture
 PacBio HiFi reads (*.fastq.gz)
 │
 ▼
@@ -92,7 +110,7 @@ PacBio HiFi reads (*.fastq.gz)
 │ PHASE 2: TRIANGULATION VALIDATION │
 │ │
 │ Layer 1: Local Assembly (Flye) 0.20 │
-│ Layer 2: Depth Signature (DHFFC+DHBFC) 0.35 │
+│ Layer 2: Depth (DHFFC+DHBFC) 0.35 │
 │ Layer 3: k-mer Spectrum (Jellyfish) 0.15 │
 │ Layer 4: Breakpoint Junction 0.30 │
 │ Layer 5: Ploidy Confirmation FILTER │
@@ -111,43 +129,30 @@ PacBio HiFi reads (*.fastq.gz)
 │ CONTRADICTED: T < 0.20 │
 └─────────────────────────────────────────┘
 
-### Calibrated Weights (Haploid Fungi)
+Calibrated Weights (Haploid Fungi)
+Layer	Original	Calibrated	Rationale
+Depth (DHFFC + DHBFC)	0.25	0.35	100% depth loss unambiguous in haploids
+Breakpoint Junction	0.20	0.30	Only signal for inversions; critical for all
+Local Assembly	0.30	0.20	Computationally expensive; standalone tool available
+k-mer Spectrum	0.25	0.15	Redundant with depth in haploids
+Haploid DHFFC Thresholds
+SV Type	Human Diploid	Haploid Fungi	Source
+Deletion	< 0.7	< 0.3	Pedersen & Quinlan (2019); this study
+Duplication	> 1.3	> 2.0	Pedersen & Quinlan (2019); this study
+Size-Stratified Scoring
+SV Size	Factor	Basis
+≥ 5,000 bp	1.00	AUC ~1.0 (Pedersen & Quinlan 2019)
+1,000–4,999 bp	0.95	AUC ~0.97
+500–999 bp	0.85	Moderate penalty
+100–499 bp	0.75	Significant penalty
+< 100 bp	0.60	Heavy penalty
+🚀 Quick Start
+Prerequisites
+Linux (Ubuntu 20.04+) | ≥16 GB RAM | Conda/Mamba
 
-| Layer | Original | Calibrated | Rationale |
-|-------|----------|------------|-----------|
-| Depth (DHFFC + DHBFC) | 0.25 | **0.35** | 100% depth loss unambiguous in haploids |
-| Breakpoint Junction | 0.20 | **0.30** | Only signal for inversions; critical for all |
-| Local Assembly | 0.30 | **0.20** | Computationally expensive; optional |
-| k-mer Spectrum | 0.25 | **0.15** | Redundant with depth in haploids |
+PacBio HiFi reads (≥20× coverage)
 
-### Haploid DHFFC Thresholds
-
-| SV Type | Human Diploid | Haploid Fungi | Source |
-|---------|-------------|---------------|--------|
-| Deletion | < 0.7 | **< 0.3** | Pedersen & Quinlan (2019); this study |
-| Duplication | > 1.3 | **> 2.0** | Pedersen & Quinlan (2019); this study |
-
-### Size-Stratified Scoring
-
-| SV Size | Factor | Basis |
-|---------|--------|-------|
-| ≥ 5,000 bp | 1.00 | AUC ~1.0 (Pedersen & Quinlan 2019) |
-| 1,000–4,999 bp | 0.95 | AUC ~0.97 |
-| 500–999 bp | 0.85 | Moderate penalty |
-| 100–499 bp | 0.75 | Significant penalty |
-| < 100 bp | 0.60 | Heavy penalty |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Linux (Ubuntu 20.04+) | ≥16 GB RAM | Conda/Mamba
-- PacBio HiFi reads (≥20× coverage)
-
-### Installation
-
-```bash
+Installation
 git clone https://github.com/keltonjenkovguimaraes-alt/fungus-sv.git
 cd fungus-sv
 
@@ -159,27 +164,20 @@ conda create -n sv_lar -c bioconda flye minimap2 samtools -y
 Usage
 # 1. Align reads to reference
 conda activate sv_align
-minimap2 -t 8 -ax map-hifi -R '@RG\tID:sample\tSM:sample' ref.fasta reads.fastq.gz \
-    | samtools sort -@ 4 -o sample.sorted.bam -
+minimap2 -t 8 -ax map-hifi -R '@RG	ID:sample	SM:sample' ref.fasta reads.fastq.gz     | samtools sort -@ 4 -o sample.sorted.bam -
 samtools index sample.sorted.bam
 
 # 2. Detect SVs (ICB consensus — 3 callers)
 conda activate sv_call
-python fungus_sv/core/icb.py --bam sample.sorted.bam --reference ref.fasta \
-    --output results/ --threads 4
+python fungus_sv/core/icb.py --bam sample.sorted.bam --reference ref.fasta     --output results/ --threads 4
 
 # 3. Validate (orthogonal evidence triangulation)
 conda activate sv_valid
-PYTHONPATH=. python -m valid_sv.run_validation \
-    --consensus-vcf results/consensus_svs.vcf \
-    --bam sample.sorted.bam --reference ref.fasta --fastq reads.fastq.gz \
-    --output results/validation/ --threads 4
+PYTHONPATH=. python -m valid_sv.run_validation     --consensus-vcf results/consensus_svs.vcf     --bam sample.sorted.bam --reference ref.fasta --fastq reads.fastq.gz     --output results/validation/ --threads 4
 
-# 3b. Validate with LAR (Local Assembly Refinement) — definitive proof
-PYTHONPATH=. python -m valid_sv.run_validation \
-    --consensus-vcf results/consensus_svs.vcf \
-    --bam sample.sorted.bam --reference ref.fasta --fastq reads.fastq.gz \
-    --output results/validation_lar/ --threads 4 --lar
+# 4. LAR: Definitive proof for key SVs (standalone)
+conda activate sv_lar
+python valid_sv/evidence/layer_lar.py
 📚 Parameter Sources
 Parameter	Value	Source
 ICB min_overlap	0.5	Liu et al. (2024) Genome Biology
@@ -198,21 +196,24 @@ Haploid max het	7%	Xing et al. (2025) BMC Genomics
 Confidence tiers	T≥0.80/0.60/0.40/0.20	SMaHT (Zhang et al. 2025) bioRxiv
 Weights (calibrated)	0.20/0.35/0.15/0.30	Liu et al. (2024); this study
 Inversion scoring	Breakpoint-only	This study (11/11 INVs confirmed)
+LAR flank size	3,000 bp	This study (tested on 4 SVs)
 📊 Visualization & Reports
 Interactive HTML report: fungus-sv.netlify.app — genome tracks, gene annotations, validation dashboard
 
 Samplot images: Manual curation of candidate SVs (Belyeu et al. 2021)
 
+Comparative Samplot: Same SV region across all 5 references (YBL005W-B, chrVII)
+
 DHFFC/DHBFC plots: Size-stratified depth validation
 
 Split-read bar charts: Inversion breakpoint evidence
+
 ⚠️ Known Limitations
 Limitation	Detail
 Inversions	Scored by breakpoint only; depth/k-mer silent for balanced INV
 Duplications	Only 2/18 confirmed by depth; most score CONTRADICTED
 Small SVs (<100 bp)	Size factor 0.60; depth signal unreliable
 Repetitive regions	FLO genes, rDNA, Ty elements produce complex signals
-Local Assembly	Must be run separately; not wired into pipeline
 Cross-species	k-mer layer fails (control k-mers absent in distant species)
 No spike-in calibration	FDR estimates are approximate; truth set pending
 📄 Citation
@@ -232,17 +233,16 @@ Genome size	~4 Mb	~12 Mb
 Reads	PacBio HiFi	PacBio HiFi
 Callers	Sniffles2 + cuteSV	Sniffles2 + cuteSV + SVIM
 📁 Repository Structure
-
 fungus-sv/
 ├── config/                  # Pipeline configuration
 ├── fungus_sv/core/          # ICB consensus calling
 ├── valid_sv/                # Triangulation validation
-│   ├── evidence/            # Layer implementations
+│   ├── evidence/            # Layer implementations (layer_lar.py = standalone LAR)
 │   ├── engine/              # Scoring engine
 │   └── reporting/           # Report generation
-├── data/yeast/              # Validation data (CICC-1445)
+├── data/yeast/              # Validation data (CICC-1445 vs 5 references)
 ├── docs/                    # Documentation & figures
-├── figures/                 # Generated plots & HTML
+├── figures/                 # Generated plots, HTML & Samplot images
 └── workflow/envs/           # Conda environment specs
 📖 References
 Pedersen BS, Quinlan AR. Duphold. GigaScience. 2019;8(4):giz040.

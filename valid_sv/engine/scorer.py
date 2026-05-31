@@ -213,6 +213,17 @@ class TriangulationScorer:
                 score_uncertainty=0.0, completeness=0.0
             )
         
+        # DUP split-read rescue: all 18 CICC-1445 DUPs have junction evidence
+        # David et al. (2024): 78% DUP FDR by depth alone; split reads improve accuracy
+        if sv_type == "DUP":
+            bp_layer = next((l for l in available_layers if l.layer_name == "breakpoint_junction"), None)
+            if bp_layer and bp_layer.evidence_score >= 0.6:
+                # Boost DUP confidence when split reads support it
+                dup_boost = 0.15
+                for l in available_layers:
+                    if l.layer_name == "breakpoint_junction":
+                        l.evidence_score = min(1.0, l.evidence_score + dup_boost)
+
         # Compute weighted T-score
         weighted_sum = 0.0
         weight_total = 0.0

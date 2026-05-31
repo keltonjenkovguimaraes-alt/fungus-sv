@@ -200,38 +200,44 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         if combined_ratio < 0.3:  # Haploid calibrated: combined < 0.3 = strong DEL
             verdict = DepthVerdict.CONSISTENT
             score = min(1.0, (0.25 - combined_ratio) * 4 + 0.8) * size_factor  # 0.8-1.0 range
-            details = f"Strong depth drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports deletion"
+            details = f"Strong depth drop{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports deletion"
         elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.CONSISTENT
             score = (0.6 + (0.5 - combined_ratio) * 1.6) * size_factor  # 0.6-0.8 range
-            details = f"Moderate depth drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports deletion"
+            details = f"Moderate depth drop{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports deletion"
         elif combined_ratio > 0.80:  # Near-normal or increased depth
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
-            details = f"Normal depth (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); contradicts deletion"
+            details = f"Normal depth{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); contradicts deletion"
         else:
             verdict = DepthVerdict.AMBIGUOUS
             score = 0.3
-            details = f"Intermediate depth (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); ambiguous"
+            details = f"Intermediate depth{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); ambiguous"
     
     elif sv_type == 'DUP':
         # True tandem duplication: coverage increases
         if combined_ratio > 2.0:  # Haploid calibrated: combined > 2.0 = strong DUP
             verdict = DepthVerdict.CONSISTENT
             score = min(1.0, (combined_ratio - 1.0) * 0.8) * size_factor  # 0.4-1.0 range
-            details = f"Coverage increase (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports duplication"
+            details = f"Coverage increase{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports duplication"
         elif combined_ratio > 1.3:  # Haploid calibrated: 1.3 < combined <= 2.0 = weak DUP
             verdict = DepthVerdict.CONSISTENT
             score = (0.5 + (combined_ratio - 1.2) * 1.67) * size_factor
-            details = f"Modest coverage increase (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports"
+            details = f"Modest coverage increase{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports"
         elif depth_ratio < 0.80:
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
-            details = f"Coverage drop (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); contradicts duplication"
+            details = f"Coverage drop{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); contradicts duplication"
         else:
             verdict = DepthVerdict.AMBIGUOUS
             score = 0.3
-            details = f"Near-normal coverage (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); ambiguous"
+            # Flag known problematic regions (FLO genes, rDNA, Ty elements, telomeres)
+        repeat_keywords = ['FLO', 'rDNA', 'RDN', 'Ty', 'YBL', 'YBR', 'YAR', 'YER', 'YGR', 'YHR', 'YJL', 'YKL', 'YLL', 'YLR', 'YML', 'YMR', 'YNL', 'YNR', 'YOL', 'YOR', 'YPL', 'YPR']
+        repeat_warning = ""
+        if any(kw in sv_id for kw in repeat_keywords):
+            repeat_warning = " [REPEAT_REGION: depth signal may be unreliable]"
+        
+        details = f"Near-normal coverage{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); ambiguous"
     
     elif sv_type == 'INS':
         # Insertions: depth in flanking regions should be normal
@@ -239,7 +245,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         if 0.80 <= depth_ratio <= 1.20:
             verdict = DepthVerdict.CONSISTENT
             score = 0.7
-            details = f"Normal depth (ratio={depth_ratio:.3f}); consistent with insertion"
+            details = f"Normal depth{repeat_warning} (ratio={depth_ratio:.3f}); consistent with insertion"
         elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0

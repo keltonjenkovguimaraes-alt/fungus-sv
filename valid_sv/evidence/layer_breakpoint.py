@@ -142,6 +142,20 @@ def analyze_breakpoint_junctions(bam_path: str, sv_id: str, sv_type: str,
             distance_support = int(0.2 * sv_size + 2000 / sv_size)
         else:
             distance_support = 200
+        # Small SV handling: Pedersen & Quinlan (2019) AUC drops for <100bp
+        # Require stronger junction evidence for small SVs
+        if sv_size < 100:
+            if split_reads < 6:
+                score = 0.0
+                details = f"Small SV (<100bp) with insufficient split reads ({split_reads}); unreliable"
+                return BreakpointEvidence(
+                    sv_id=sv_id, sv_type=sv_type,
+                    verdict=BreakpointVerdict.INSUFFICIENT_DATA,
+                    evidence_score=0.0, total_reads_at_breakpoint=total_reads,
+                    split_reads=split_reads, soft_clipped=soft_clipped,
+                    spanning_reads=spanning_reads, details=details
+                )
+        
         # Scoring based on Liu et al. breakpoint deviation distributions
         # pbsv-like precision: 90% within ±10bp → score near 1.0
         # Sniffles2-like: ~60% zero-deviation → score 0.8+

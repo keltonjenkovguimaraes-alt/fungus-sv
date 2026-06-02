@@ -200,19 +200,19 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         if combined_ratio < 0.3:  # Haploid calibrated: combined < 0.3 = strong DEL
             verdict = DepthVerdict.CONSISTENT
             score = min(1.0, (0.25 - combined_ratio) * 4 + 0.8) * size_factor  # 0.8-1.0 range
-            details = f"Strong depth drop{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports deletion"
+            details = f"Strong depth drop{translocation_warning}{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); supports deletion"
         elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.CONSISTENT
             score = (0.6 + (0.5 - combined_ratio) * 1.6) * size_factor  # 0.6-0.8 range
-            details = f"Moderate depth drop{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports deletion"
+            details = f"Moderate depth drop{translocation_warning}{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); weakly supports deletion"
         elif combined_ratio > 0.80:  # Near-normal or increased depth
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0
-            details = f"Normal depth{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); contradicts deletion"
+            details = f"Normal depth{translocation_warning}{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); contradicts deletion"
         else:
             verdict = DepthVerdict.AMBIGUOUS
             score = 0.3
-            details = f"Intermediate depth{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); ambiguous"
+            details = f"Intermediate depth{translocation_warning}{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, size={sv_size}bp); ambiguous"
     
     elif sv_type == 'DUP':
         # True tandem duplication: coverage increases
@@ -237,6 +237,12 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         if any(kw in sv_id for kw in repeat_keywords):
             repeat_warning = " [REPEAT_REGION: depth signal may be unreliable]"
         
+        # Translocation flag: DHFFC near zero could be a rearrangement, not a deletion
+        # M1 IMX2600: DHFFC=0.000 but LAR showed sequence exists elsewhere
+        translocation_warning = ""
+        if sv_type == "DEL" and depth_ratio < 0.01:
+            translocation_warning = " [NEAR-ZERO_DEPTH: possible translocation or reference difference, not simple DEL — manual curation recommended]" 
+        
         details = f"Near-normal coverage{repeat_warning} (DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}); ambiguous"
     
     elif sv_type == 'INS':
@@ -245,7 +251,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         if 0.80 <= depth_ratio <= 1.20:
             verdict = DepthVerdict.CONSISTENT
             score = 0.7
-            details = f"Normal depth{repeat_warning} (ratio={depth_ratio:.3f}); consistent with insertion"
+            details = f"Normal depth{translocation_warning}{repeat_warning} (ratio={depth_ratio:.3f}); consistent with insertion"
         elif combined_ratio < 0.7:  # Haploid calibrated: 0.3 <= combined < 0.7 = weak DEL
             verdict = DepthVerdict.INCONSISTENT
             score = 0.0

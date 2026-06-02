@@ -211,27 +211,20 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         ))
 
         # Layer 2: Local assembly (LAR)
-        if args.lar:
-            try:
-                lar_result = run_lar(
-                    bam_path, reference_path,
-                    sv['id'], sv['svtype'],
-                    sv['chrom'], sv['pos'], sv['end']
-                )
-                layer_results.append(LayerResult(
-                    "local_assembly", lar_result.evidence_score,
-                    lar_result.verdict.value, lar_result.evidence_score > 0,
-                    0.20, lar_result.details
-                ))
-            except Exception as e:
-                layer_results.append(LayerResult(
-                    "local_assembly", 0.0, "error", False, 0.20,
-                    f"LAR failed: {str(e)}"
-                ))
+        # Layer 2: Local assembly (LAR)
+        triang = triangulability_reports.get(sv['id'])
+        lar_available = any(l.layer_name == 'local_assembly' and l.available
+                           for l in triang.layers) if triang else False
+        if lar_available:
+            layer_results.append(LayerResult(
+                "local_assembly", 0.0,
+                "not_run", False, 0.25,
+                "LAR NOT YET RUN — run fungus_sv/modules/local_assembly.py first"
+            ))
         else:
             layer_results.append(LayerResult(
-                "local_assembly", 0.0, "not_run", False, 0.20,
-                "LAR not requested (use --lar flag)"
+                "local_assembly", 0.0, "unavailable", False, 0.25,
+                "Insufficient data for LAR"
             ))
 
         # Layer 3: Depth signature

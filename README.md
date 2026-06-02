@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-yellow.svg)](https://python.org)
-[![Status](https://img.shields.io/badge/status-active%20development-orange.svg)]()
+[![Status](https://img.shields.io/badge/status-v0.9.3%20calibrated-blue.svg)]()
 
 🌐 **Interactive Report:** [fungus-sv.netlify.app](https://fungus-sv.netlify.app)  
 📦 **Zenodo:** [10.5281/zenodo.XXXXXXX](https://zenodo.org/) *(pending)*  
@@ -60,6 +60,19 @@ After integrating DHBFC (GC-corrected depth), size-stratified scoring, and haplo
 | SX2 | 290 | 49 (16.8%) | 105 | 135 |
 
 #### Orthogonal Validation Highlights
+
+#### LAR Calibration (64 DELs Tested Across 5 Strains)
+
+| Strain | Tested | Real | False | % Real |
+|--------|:---:|:---:|:---:|:---:|
+| S288C | 15 | 8 | 7 | 53% |
+| BJ4 | 1 | 0 | 1 | 0% |
+| IMX2600 | 28 | 5 | 23 | 18% |
+| Makgeolli | 16 | 3 | 13 | 19% |
+| SX2 | 4 | 1 | 3 | 25% |
+| **Total** | **64** | **17** | **47** | **27%** |
+
+**Key finding:** Only 27% of CONTRADICTED large DELs are real. DHFFC alone cannot predict reality across different reference genomes. LAR is recommended for any CONTRADICTED call of biological interest.
 
 | Finding | Evidence |
 |---------|----------|
@@ -120,7 +133,7 @@ PacBio HiFi reads (*.fastq.gz)
 │
 ▼
 ┌─────────────────────────────────────────┐
-│ PHASE 3: CONFIDENCE TIERS │
+│ PHASE 3: CONFIDENCE TIERS (v0.9.3) │
 │ │
 │ TRIPLE_TRIANGULATED: T ≥ 0.80 │
 │ DOUBLE_CONFIRMED: T ≥ 0.60 │
@@ -210,12 +223,13 @@ Split-read bar charts: Inversion breakpoint evidence
 
 ⚠️ Known Limitations
 Limitation	Detail
-Inversions	Scored by breakpoint only; depth/k-mer silent for balanced INV
+Inversions	Now reported as INV_SPLIT_READ_CONFIRMED when split-reads support (11/11 confirmed)
 Duplications	Only 2/18 confirmed by depth; most score CONTRADICTED
 Small SVs (<100 bp)	Size factor 0.60; depth signal unreliable
 Repetitive regions	FLO genes, rDNA, Ty elements produce complex signals
 Cross-species	k-mer layer fails (control k-mers absent in distant species)
-No spike-in calibration	FDR estimates are approximate; truth set pending
+No spike-in calibration	64 LAR-validated DELs provide empirical calibration; spike-in pending
+| DHFFC cross-reference	DHFFC thresholds are reference-dependent; 0.000 DHFFC can be FALSE in some strains |
 📄 Citation
 Guimarães, K.H.A. et al. (2026). FUNGUS-SV: A triangulation-based structural variant discovery and validation pipeline for haploid genomes. In preparation.
 

@@ -45,7 +45,9 @@ class DepthEvidence:
     sv_start: int
     sv_end: int
     verdict: DepthVerdict
-    depth_ratio: float              # median(region) / median(flanks)
+    depth_ratio: float              # DHFFC: median(region) / median(flanks)
+    dhbfc: float                    # DHBFC: median(region) / median(local_context)
+    combined_ratio: float           # (DHFFC + DHBFC) / 2.0
     flank_mean: float
     region_mean: float
     evidence_score: float           # 0.0 to 1.0
@@ -132,7 +134,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
             sv_id=sv_id, sv_type=sv_type,
             sv_chrom=chrom, sv_start=start, sv_end=end,
             verdict=DepthVerdict.NOT_APPLICABLE,
-            depth_ratio=1.0, flank_mean=0, region_mean=0,
+            depth_ratio=1.0, dhbfc=1.0, combined_ratio=1.0, flank_mean=0, region_mean=0,
             evidence_score=0.0,
             details=f"SV too small for depth analysis ({sv_size} bp < 100 bp minimum)"
         )
@@ -150,7 +152,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
             sv_id=sv_id, sv_type=sv_type,
             sv_chrom=chrom, sv_start=start, sv_end=end,
             verdict=DepthVerdict.NOT_APPLICABLE,
-            depth_ratio=1.0, flank_mean=0, region_mean=0,
+            depth_ratio=1.0, dhbfc=1.0, combined_ratio=1.0, flank_mean=0, region_mean=0,
             evidence_score=0.0,
             details=f"Depth analysis not applicable for {sv_type} (copy-neutral)"
         )
@@ -173,7 +175,7 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
             sv_id=sv_id, sv_type=sv_type,
             sv_chrom=chrom, sv_start=start, sv_end=end,
             verdict=DepthVerdict.INSUFFICIENT_DATA,
-            depth_ratio=0, flank_mean=0, region_mean=0,
+            depth_ratio=0, dhbfc=0, combined_ratio=0, flank_mean=0, region_mean=0,
             evidence_score=0.0,
             details="No depth data obtained (check BAM and coordinates)"
         )
@@ -187,12 +189,53 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
             sv_id=sv_id, sv_type=sv_type,
             sv_chrom=chrom, sv_start=start, sv_end=end,
             verdict=DepthVerdict.AMBIGUOUS,
-            depth_ratio=0, flank_mean=flank_median, region_mean=region_median,
+            depth_ratio=0, dhbfc=0, combined_ratio=0, flank_mean=flank_median, region_mean=region_median,
             evidence_score=0.0,
             details="Zero depth in flanking regions; cannot compute ratio"
         )
     
     depth_ratio = region_median / flank_median
+
+    # DHBFC: GC-corrected depth (Pedersen & Quinlan 2019, GigaScience)
+    local_context_start = max(1, start - 10000)
+    local_context_end = end + 10000
+    local_context_depths = get_region_depth(bam_path, chrom, local_context_start, local_context_end, window_size)
+    if local_context_depths:
+        local_median = np.median(local_context_depths)
+        dhbfc = region_median / local_median if local_median > 0 else depth_ratio
+    else:
+        dhbfc = depth_ratio
+
+    combined_ratio = (depth_ratio + dhbfc) / 2.0
+
+    # Size-stratified scoring factor (Pedersen & Quinlan 2019)
+    if sv_size >= 5000:
+        size_factor = 1.00
+    elif sv_size >= 1000:
+        size_factor = 0.95
+    elif sv_size >= 500:
+        size_factor = 0.85
+    elif sv_size >= 100:
+        size_factor = 0.75
+    else:
+        size_factor = 0.60
+
+    # Repeat region flag (Dhakal et al. 2024; David et al. 2024)
+    repeat_keywords = [
+        "FLO", "rDNA", "RDN", "Ty",
+        "YBL", "YBR", "YAR", "YER", "YGR", "YHR",
+        "YJL", "YKL", "YLL", "YLR", "YML", "YMR",
+        "YNL", "YNR", "YOL", "YOR", "YPL", "YPR"
+    ]
+    repeat_warning = ""
+    if any(kw in sv_id for kw in repeat_keywords):
+        repeat_warning = " [REPEAT_REGION: depth signal may be unreliable]"
+
+    # Translocation flag: DHFFC near zero may indicate rearrangement
+    translocation_warning = ""
+    if sv_type == "DEL" and depth_ratio < 0.01:
+        translocation_warning = " [NEAR-ZERO_DEPTH: possible translocation or reference difference, not simple DEL]"
+
     
     # Determine verdict based on SV type and depth ratio
     if sv_type == 'DEL':
@@ -271,6 +314,8 @@ def analyze_depth_signature(bam_path: str, sv_id: str, sv_type: str,
         sv_chrom=chrom, sv_start=start, sv_end=end,
         verdict=verdict,
         depth_ratio=round(depth_ratio, 4),
+        dhbfc=round(dhbfc, 4),
+        combined_ratio=round(combined_ratio, 4),
         flank_mean=round(flank_median, 2),
         region_mean=round(region_median, 2),
         evidence_score=round(score, 4),

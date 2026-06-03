@@ -33,6 +33,7 @@ import sys
 import os
 import argparse
 import json
+import yaml
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -193,7 +194,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     # Run evidence layers
     print("\n  Running evidence layers...")
 
-    scorer = TriangulationScorer()
+    scorer = TriangulationScorer(weights=CALIBRATED_WEIGHTS)
     results = []
     
     for i, sv in enumerate(svs_to_validate):
@@ -218,12 +219,12 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
         if lar_available:
             layer_results.append(LayerResult(
                 "local_assembly", 0.0,
-                "not_run", False, 0.25,
+                "not_run", False, 0.20,
                 "LAR NOT YET RUN — run fungus_sv/modules/local_assembly.py first"
             ))
         else:
             layer_results.append(LayerResult(
-                "local_assembly", 0.0, "unavailable", False, 0.25,
+                "local_assembly", 0.0, "unavailable", False, 0.20,
                 "Insufficient data for LAR"
             ))
 
@@ -238,17 +239,17 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 )
                 layer_results.append(LayerResult(
                     "depth_signature", depth_result.evidence_score,
-                    depth_result.verdict.value, True, 0.25,
+                    depth_result.verdict.value, True, 0.35,
                     depth_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "depth_signature", 0.0, "error", False, 0.25,
+                    "depth_signature", 0.0, "error", False, 0.35,
                     f"Depth analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "depth_signature", 0.0, "not_applicable", False, 0.25,
+                "depth_signature", 0.0, "not_applicable", False, 0.35,
                 f"Not applicable for {sv['svtype']}"
             ))
 
@@ -267,19 +268,19 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 )
                 layer_results.append(LayerResult(
                     "kmer_spectrum", kmer_result.evidence_score,
-                    kmer_result.verdict.value, True, 0.25,
+                    kmer_result.verdict.value, True, 0.15,
                     kmer_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "kmer_spectrum", 0.0, "error", False, 0.25,
+                    "kmer_spectrum", 0.0, "error", False, 0.15,
                     f"k-mer analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
                 "kmer_spectrum", 0.0,
                 "not_applicable" if sv['svtype'] not in ('DEL', 'INS') else "unavailable",
-                False, 0.25,
+                False, 0.15,
                 "k-mer layer not available (missing FASTQ or jellyfish)"
             ))
 
@@ -294,17 +295,17 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 )
                 layer_results.append(LayerResult(
                     "breakpoint_junction", bp_result.evidence_score,
-                    bp_result.verdict.value, True, 0.25,
+                    bp_result.verdict.value, True, 0.30,
                     bp_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "breakpoint_junction", 0.0, "error", False, 0.25,
+                    "breakpoint_junction", 0.0, "error", False, 0.30,
                     f"Breakpoint analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "breakpoint_junction", 0.0, "unavailable", False, 0.25,
+                "breakpoint_junction", 0.0, "unavailable", False, 0.30,
                 "No BAM available"
             ))
 
@@ -320,7 +321,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
             ploidy_score = ploidy_result.evidence_score if ploidy_result.is_haploid else 0.3
             layer_results.append(LayerResult(
                 "ploidy_confirmation", ploidy_score,
-                f"het_rate={ploidy_result.het_rate:.3f}", True, 0.15,
+                f"het_rate={ploidy_result.het_rate:.3f}", True, 0.00,
                 ploidy_result.details
             ))
         except Exception as e:

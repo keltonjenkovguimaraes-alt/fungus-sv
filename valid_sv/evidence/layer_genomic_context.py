@@ -45,6 +45,14 @@ class GenomicContextResult:
     details: str
 
 
+# Size-stratified breakpoint precision for inversions (Cheng & Sedlazeck 2025)
+# refdist: 1 kb for <10 kb, 10 kb for 10-100 kb, 100 kb for >100 kb
+INV_BREAKPOINT_THRESHOLDS = {
+    'small': (50, 10000, 1000),      # 50 bp-10 kb: 1 kb precision
+    'medium': (10000, 100000, 10000), # 10-100 kb: 10 kb precision
+    'large': (100000, float('inf'), 100000), # >100 kb: 100 kb precision
+}
+
 # Essential genes in S. cerevisiae (SGD database)
 # These are genes where deletion is lethal in rich medium.
 # Source: SGD (https://www.yeastgenome.org/)

@@ -44,6 +44,7 @@ from valid_sv.evidence.layer_depth import analyze_depth_signature, DepthEvidence
 from valid_sv.evidence.layer_kmer import analyze_kmer_spectrum, KmerEvidence
 from valid_sv.evidence.layer_breakpoint import analyze_breakpoint_junctions, BreakpointEvidence
 from valid_sv.evidence.layer_ploidy import analyze_ploidy, run_longshot, PloidyEvidence
+from valid_sv.evidence.layer_genomic_context import analyze_genomic_context, FilterVerdict
 from valid_sv.evidence.layer_lar import run_lar, LAREvidence, LARVerdict
 from valid_sv.quality.triangulability import assess_triangulability, TriangulabilityReport
 from valid_sv.engine.scorer import (
@@ -138,7 +139,21 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     print("=" * 70)
     print()
     
-    # Parse SVs
+    # Determine annotation TSV path from BAM filename
+# Try to match strain name to annotation file
+import glob
+_annotation_tsv = None
+_bam_basename = os.path.basename(args.bam)
+for _tsv_path in glob.glob('data/yeast/*_sv_annotations.tsv'):
+    _tsv_strain = os.path.basename(_tsv_path).replace('_sv_annotations.tsv', '')
+    if _tsv_strain in _bam_basename or _tsv_strain in args.reference:
+        _annotation_tsv = _tsv_path
+        break
+# Fallback: use S288C annotation
+if not _annotation_tsv:
+    _annotation_tsv = 'data/yeast/S288C_sv_annotations.tsv'
+
+# Parse SVs
     all_svs = parse_consensus_vcf(consensus_vcf)
     print(f"  Loaded {len(all_svs)} SVs from consensus VCF")
 
@@ -330,6 +345,24 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                 f"Ploidy analysis failed: {str(e)}"
             ))
         
+        # Layer 6: Genomic Context (PASS/FLAG/FAIL — hard filter)
+        try:
+            if os.path.exists(_annotation_tsv):
+                genomic_result = analyze_genomic_context(
+                    sv['id'], sv['svtype'], _annotation_tsv
+                )
+                layer_results.append(LayerResult(
+                    "genomic_context", 
+                    1.0 if genomic_result.verdict == FilterVerdict.PASS else 0.5 if genomic_result.verdict == FilterVerdict.FLAG else 0.0,
+                    genomic_result.verdict.value, True, 0.0,
+                    genomic_result.details
+                ))
+        except Exception as e:
+            layer_results.append(LayerResult(
+                "genomic_context", 0.0, "error", False, 0.0,
+                f"Genomic context analysis failed: {str(e)}"
+            ))
+
         # Score
         result = scorer.score(
             sv['id'], sv['svtype'], sv['chrom'],

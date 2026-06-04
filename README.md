@@ -1,6 +1,7 @@
 # 🧬 FUNGUS-SV v0.9.4
 
 **Structural variant discovery and triangulation-based validation for haploid fungal genomes using PacBio HiFi reads.**
+ https://fungus-sv.netlify.app
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-yellow.svg)](https://python.org)

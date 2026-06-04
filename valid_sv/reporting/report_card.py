@@ -14,7 +14,7 @@ def generate_report_card(result):
 === VALIDATION REPORT: {result.sv_id} ===
 Type: {result.sv_type}
 T-Score: {result.t_score:.3f}
-Confidence: {result.tier.name}
+Confidence: {result.tier.name if hasattr(result.tier, 'name') else str(result.tier)}
 """
 
 
@@ -28,7 +28,7 @@ def generate_summary_table(results):
     # Sort by T-score descending
     sorted_results = sorted(results, key=lambda r: r.t_score, reverse=True)
     for r in sorted_results:
-        summary += f"{r.sv_id:<30} {r.sv_type:<8} {r.t_score:<10.3f} {r.tier.name:<15}\n"
+        summary += f"{r.sv_id:<30} {r.sv_type:<8} {r.t_score:<10.3f} {r.tier.name if hasattr(r.tier, 'name') else str(r.tier):<15}\n"
     
     # Add size-stratified summary
     summary += "\n" + generate_size_stratified_summary(results)

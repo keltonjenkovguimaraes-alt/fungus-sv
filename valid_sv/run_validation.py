@@ -13,20 +13,14 @@ Usage:
         --output results/validation/
 
 Architecture:
-    Prediction phase (existing FUNGUS-SV):
-        ICB consensus → Candidate SV list
-
-    Validation phase (VALID-SV):
-        Layer 1: ICB multi-caller agreement (REPORTED, not scored - circular)
-        Layer 2: Local Assembly Refinement (LAR) — must be run separately
-        Layer 3: Read-Depth Signature
-        Layer 4: k-mer Spectrum Analysis
-        Layer 5: Breakpoint Junction Analysis
-        Layer 6: Ploidy Confirmation (SNV het rate)
-        → Triangulation Engine → T-score + Confidence Estimate
-
-Author: VALID-SV / FUNGUS-SV
-Status: Development — NOT FOR PRODUCTION USE
+    Layer 1: ICB multi-caller agreement (REPORTED, not scored)
+    Layer 2: Local Assembly Refinement (LAR) — standalone
+    Layer 3: Read-Depth Signature
+    Layer 4: k-mer Spectrum Analysis
+    Layer 5: Breakpoint Junction Analysis
+    Layer 6: Ploidy Confirmation
+    Layer 7: Genomic Context (hard filter)
+    → Triangulation Engine → T-score + Confidence Estimate
 """
 
 import sys
@@ -34,10 +28,11 @@ import os
 import argparse
 import json
 import yaml
+import glob
+import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from valid_sv.evidence.layer_depth import analyze_depth_signature, DepthEvidence
@@ -69,12 +64,10 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
             pos = int(parts[1])
             sv_id = parts[2]
             info = parts[7]
-            # Extract SV type
-            import re
+
             svtype_match = re.search(r'SVTYPE=(\w+)', info)
             svtype = svtype_match.group(1) if svtype_match else 'UNK'
 
-            # Extract end position
             end_match = re.search(r'END=(\d+)', info)
             svlen_match = re.search(r'SVLEN=(\d+)', info)
             if end_match:
@@ -84,7 +77,6 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
             else:
                 end = pos
 
-            # Extract support
             support_match = re.search(r'SUPPORT=(\d+)', info)
             support = int(support_match.group(1)) if support_match else 1
 
@@ -97,7 +89,6 @@ def parse_consensus_vcf(vcf_path: str) -> List[dict]:
                 'size': end - pos,
                 'support': support,
             })
-
     return svs
 
 
@@ -109,22 +100,7 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
                             jellyfish_db: Optional[str] = None,
                             ablation: bool = False,
                             threads: int = 4) -> dict:
-    """
-    Run complete validation pipeline on consensus SVs.
-
-    Args:
-        consensus_vcf: Path to ICB consensus VCF
-        bam_path: Path to aligned BAM
-        reference_path: Path to reference FASTA
-        fastq_path: Path to raw reads (for k-mer layer)
-        output_dir: Output directory for reports
-        min_support: Minimum ICB support to validate (1, 2, or 3)
-        max_svs: Maximum number of SVs to validate (for testing)
-        skip_kmer: Skip k-mer layer if jellyfish unavailable
-
-    Returns:
-        Dictionary with summary statistics
-    """
+    """Run complete validation pipeline on consensus SVs."""
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 70)
@@ -135,37 +111,32 @@ def run_validation_pipeline(consensus_vcf: str, bam_path: str,
     print(f"  Reference: {reference_path}")
     print(f"  Raw reads: {fastq_path or 'NOT PROVIDED (k-mer layer disabled)'}")
     print(f"  Output: {output_dir}")
-    print(f"  Min ICB support: {min_support}")
     print("=" * 70)
     print()
-    
-    # Determine annotation TSV path from BAM filename
-# Try to match strain name to annotation file
-import glob
-_annotation_tsv = None
-_bam_basename = os.path.basename(args.bam)
-for _tsv_path in glob.glob('data/yeast/*_sv_annotations.tsv'):
-    _tsv_strain = os.path.basename(_tsv_path).replace('_sv_annotations.tsv', '')
-    if _tsv_strain in _bam_basename or _tsv_strain in args.reference:
-        _annotation_tsv = _tsv_path
-        break
-# Fallback: use S288C annotation
-if not _annotation_tsv:
-    _annotation_tsv = 'data/yeast/S288C_sv_annotations.tsv'
 
-# Parse SVs
+    # Determine annotation TSV path
+    _annotation_tsv = None
+    _bam_basename = os.path.basename(bam_path)
+    for _tsv_path in glob.glob('data/yeast/*_sv_annotations.tsv'):
+        _tsv_strain = os.path.basename(_tsv_path).replace('_sv_annotations.tsv', '')
+        if _tsv_strain in _bam_basename or _tsv_strain in reference_path:
+            _annotation_tsv = _tsv_path
+            break
+    if not _annotation_tsv:
+        _annotation_tsv = 'data/yeast/S288C_sv_annotations.tsv'
+
+    # Parse SVs
     all_svs = parse_consensus_vcf(consensus_vcf)
     print(f"  Loaded {len(all_svs)} SVs from consensus VCF")
 
-    # Filter by support
     svs_to_validate = [sv for sv in all_svs if sv['support'] >= min_support]
-    print(f"  Validating {len(svs_to_validate)} SVs with SUPPORT ≥ {min_support}")
+    print(f"  Validating {len(svs_to_validate)} SVs with SUPPORT >= {min_support}")
 
     if max_svs:
         svs_to_validate = svs_to_validate[:max_svs]
         print(f"  (Limited to {max_svs} for testing)")
 
-    # Assess triangulability first
+    # Assess triangulability
     print("\n  Assessing triangulability...")
     triangulability_reports = {}
     for sv in svs_to_validate:
@@ -177,76 +148,61 @@ if not _annotation_tsv:
         )
         triangulability_reports[sv['id']] = report
 
-    fully = sum(1 for r in triangulability_reports.values()
-                if r.tier.name == 'FULLY_TRIANGULABLE')
-    partially = sum(1 for r in triangulability_reports.values()
-                   if r.tier.name == 'PARTIALLY_TRIANGULABLE')
-    limited = sum(1 for r in triangulability_reports.values()
-                 if r.tier.name in ('LIMITED', 'NOT_TRIANGULABLE'))
-    print(f"    Fully triangulable: {fully}")
-    print(f"    Partially triangulable: {partially}")
-    print(f"    Limited/not triangulable: {limited}")
-    
-    # Build k-mer database once (if fastq provided)
+    # k-mer database
     kmer_db = None
     if jellyfish_db and os.path.exists(jellyfish_db):
         from valid_sv.evidence.layer_kmer import set_database_path
         kmer_db = jellyfish_db
         set_database_path(kmer_db)
-        print(f"  Using pre-built k-mer DB: {kmer_db}")
     elif fastq_path and not skip_kmer:
         from valid_sv.evidence.layer_kmer import build_kmer_database, set_database_path
         try:
-            print("\n  Building k-mer database (one-time)...")
+            print("\n  Building k-mer database...")
             kmer_db = build_kmer_database(fastq_path, output_dir=os.path.join(output_dir, "kmer_db"))
             set_database_path(kmer_db)
-            print(f"  k-mer DB ready: {kmer_db}")
         except Exception as e:
             print(f"  WARNING: k-mer DB build failed: {e}")
-            print(f"  k-mer layer will be skipped")
             skip_kmer = True
+
+    # Load calibrated weights from config
+    _config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+    with open(_config_path) as f:
+        _config = yaml.safe_load(f)
+    CALIBRATED_WEIGHTS = _config.get('weights', {
+        'local_assembly': 0.20, 'depth_signature': 0.35,
+        'kmer_spectrum': 0.15, 'breakpoint_junction': 0.30,
+        'ploidy_confirmation': 0.0,
+    })
 
     # Run evidence layers
     print("\n  Running evidence layers...")
-
     scorer = TriangulationScorer(weights=CALIBRATED_WEIGHTS)
     results = []
-    
+
     for i, sv in enumerate(svs_to_validate):
-        if i % 10 == 0 and i > 0:
-            print(f"    Processed {i}/{len(svs_to_validate)} SVs...")
+        if i % 50 == 0:
+            print(f"    Processing {i}/{len(svs_to_validate)}...")
 
         layer_results = []
+        triang = triangulability_reports.get(sv['id'])
 
-        # Layer 1: Alignment consensus (pre-computed from VCF)
+        # Layer 0: ICB consensus (reported, not scored)
         icb_score = {1: 0.33, 2: 0.67, 3: 1.0}.get(sv['support'], 0.33)
         layer_results.append(LayerResult(
             "alignment_consensus", icb_score,
             f"{sv['support']}/3 callers", True, 0.0,
-            f"ICB support: {sv['support']} callers (reported but NOT used in T-score)"
+            f"ICB support: {sv['support']} callers"
         ))
 
-        # Layer 2: Local assembly (LAR)
-        # Layer 2: Local assembly (LAR)
-        triang = triangulability_reports.get(sv['id'])
-        lar_available = any(l.layer_name == 'local_assembly' and l.available
-                           for l in triang.layers) if triang else False
-        if lar_available:
-            layer_results.append(LayerResult(
-                "local_assembly", 0.0,
-                "not_run", False, 0.20,
-                "LAR NOT YET RUN — run fungus_sv/modules/local_assembly.py first"
-            ))
-        else:
-            layer_results.append(LayerResult(
-                "local_assembly", 0.0, "unavailable", False, 0.20,
-                "Insufficient data for LAR"
-            ))
+        # Layer 1: LAR (standalone)
+        layer_results.append(LayerResult(
+            "local_assembly", 0.0, "not_run", False,
+            CALIBRATED_WEIGHTS['local_assembly'],
+            "LAR must be run separately"
+        ))
 
-        # Layer 3: Depth signature
-        depth_available = any(l.layer_name == 'depth_signature' and l.available
-                              for l in triang.layers) if triang else False
-        if depth_available and sv['svtype'] in ('DEL', 'DUP'):
+        # Layer 2: Depth signature
+        if sv['svtype'] in ('DEL', 'DUP'):
             try:
                 depth_result = analyze_depth_signature(
                     bam_path, sv['id'], sv['svtype'],
@@ -254,26 +210,25 @@ if not _annotation_tsv:
                 )
                 layer_results.append(LayerResult(
                     "depth_signature", depth_result.evidence_score,
-                    depth_result.verdict.value, True, 0.35,
+                    depth_result.verdict.value, True,
+                    CALIBRATED_WEIGHTS['depth_signature'],
                     depth_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "depth_signature", 0.0, "error", False, 0.35,
+                    "depth_signature", 0.0, "error", False,
+                    CALIBRATED_WEIGHTS['depth_signature'],
                     f"Depth analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "depth_signature", 0.0, "not_applicable", False, 0.35,
+                "depth_signature", 0.0, "not_applicable", False,
+                CALIBRATED_WEIGHTS['depth_signature'],
                 f"Not applicable for {sv['svtype']}"
             ))
 
-        # Layer 4: k-mer spectrum
-        kmer_available = (any(l.layer_name == 'kmer_spectrum' and l.available
-                             for l in triang.layers) if triang else False)
-        kmer_available = kmer_available and not skip_kmer and fastq_path
-
-        if kmer_available and sv['svtype'] in ('DEL', 'INS'):
+        # Layer 3: k-mer spectrum
+        if not skip_kmer and fastq_path and sv['svtype'] in ('DEL', 'INS'):
             try:
                 kmer_result = analyze_kmer_spectrum(
                     fastq_path, reference_path,
@@ -283,85 +238,84 @@ if not _annotation_tsv:
                 )
                 layer_results.append(LayerResult(
                     "kmer_spectrum", kmer_result.evidence_score,
-                    kmer_result.verdict.value, True, 0.15,
+                    kmer_result.verdict.value, True,
+                    CALIBRATED_WEIGHTS['kmer_spectrum'],
                     kmer_result.details
                 ))
             except Exception as e:
                 layer_results.append(LayerResult(
-                    "kmer_spectrum", 0.0, "error", False, 0.15,
+                    "kmer_spectrum", 0.0, "error", False,
+                    CALIBRATED_WEIGHTS['kmer_spectrum'],
                     f"k-mer analysis failed: {str(e)}"
                 ))
         else:
             layer_results.append(LayerResult(
-                "kmer_spectrum", 0.0,
-                "not_applicable" if sv['svtype'] not in ('DEL', 'INS') else "unavailable",
-                False, 0.15,
-                "k-mer layer not available (missing FASTQ or jellyfish)"
+                "kmer_spectrum", 0.0, "unavailable", False,
+                CALIBRATED_WEIGHTS['kmer_spectrum'],
+                "k-mer layer not available"
             ))
 
-        # Layer 5: Breakpoint junction
-        bp_available = any(l.layer_name == 'breakpoint_junction' and l.available
-                          for l in triang.layers) if triang else False
-        if bp_available:
-            try:
-                bp_result = analyze_breakpoint_junctions(
-                    bam_path, sv['id'], sv['svtype'],
-                    sv['chrom'], sv['pos'], sv['end']
-                )
-                layer_results.append(LayerResult(
-                    "breakpoint_junction", bp_result.evidence_score,
-                    bp_result.verdict.value, True, 0.30,
-                    bp_result.details
-                ))
-            except Exception as e:
-                layer_results.append(LayerResult(
-                    "breakpoint_junction", 0.0, "error", False, 0.30,
-                    f"Breakpoint analysis failed: {str(e)}"
-                ))
-        else:
+        # Layer 4: Breakpoint junction
+        try:
+            bp_result = analyze_breakpoint_junctions(
+                bam_path, sv['id'], sv['svtype'],
+                sv['chrom'], sv['pos'], sv['end']
+            )
             layer_results.append(LayerResult(
-                "breakpoint_junction", 0.0, "unavailable", False, 0.30,
-                "No BAM available"
+                "breakpoint_junction", bp_result.evidence_score,
+                bp_result.verdict.value, True,
+                CALIBRATED_WEIGHTS['breakpoint_junction'],
+                bp_result.details
+            ))
+        except Exception as e:
+            layer_results.append(LayerResult(
+                "breakpoint_junction", 0.0, "error", False,
+                CALIBRATED_WEIGHTS['breakpoint_junction'],
+                f"Breakpoint analysis failed: {str(e)}"
             ))
 
-        # Layer 6: Ploidy confirmation (SNV het rate)
+        # Layer 5: Ploidy confirmation
         try:
             ploidy_vcf = os.path.join(output_dir, 'longshot_snvs.vcf')
-            if os.path.exists(ploidy_vcf):
-                ploidy_result = analyze_ploidy(ploidy_vcf)
-            else:
+            if not os.path.exists(ploidy_vcf):
                 run_longshot(bam_path, reference_path, ploidy_vcf)
-                ploidy_result = analyze_ploidy(ploidy_vcf)
-
+            ploidy_result = analyze_ploidy(ploidy_vcf)
             ploidy_score = ploidy_result.evidence_score if ploidy_result.is_haploid else 0.3
             layer_results.append(LayerResult(
                 "ploidy_confirmation", ploidy_score,
-                f"het_rate={ploidy_result.het_rate:.3f}", True, 0.00,
+                f"het_rate={ploidy_result.het_rate:.3f}", True,
+                CALIBRATED_WEIGHTS['ploidy_confirmation'],
                 ploidy_result.details
             ))
         except Exception as e:
             layer_results.append(LayerResult(
-                "ploidy_confirmation", 0.0, "error", False, 0.00,
+                "ploidy_confirmation", 0.0, "error", False,
+                CALIBRATED_WEIGHTS['ploidy_confirmation'],
                 f"Ploidy analysis failed: {str(e)}"
             ))
-        
-        # Layer 6: Genomic Context (PASS/FLAG/FAIL — hard filter)
-        try:
-            if os.path.exists(_annotation_tsv):
+
+        # Layer 6: Genomic context
+        if os.path.exists(_annotation_tsv):
+            try:
                 genomic_result = analyze_genomic_context(
                     sv['id'], sv['svtype'], _annotation_tsv
                 )
+                if genomic_result.verdict == FilterVerdict.PASS:
+                    gc_score = 1.0
+                elif genomic_result.verdict == FilterVerdict.FLAG:
+                    gc_score = 0.5
+                else:
+                    gc_score = 0.0
                 layer_results.append(LayerResult(
-                    "genomic_context", 
-                    1.0 if genomic_result.verdict == FilterVerdict.PASS else 0.5 if genomic_result.verdict == FilterVerdict.FLAG else 0.0,
+                    "genomic_context", gc_score,
                     genomic_result.verdict.value, True, 0.0,
                     genomic_result.details
                 ))
-        except Exception as e:
-            layer_results.append(LayerResult(
-                "genomic_context", 0.0, "error", False, 0.0,
-                f"Genomic context analysis failed: {str(e)}"
-            ))
+            except Exception as e:
+                layer_results.append(LayerResult(
+                    "genomic_context", 0.0, "error", False, 0.0,
+                    f"Genomic context failed: {str(e)}"
+                ))
 
         # Score
         result = scorer.score(
@@ -375,66 +329,40 @@ if not _annotation_tsv:
 
     # Estimate FDR
     all_tscores = [r.t_score for r in results]
-
     print("  Estimating FDR from T-score distribution...")
     try:
         fdr_estimate = estimate_fdr(all_tscores)
         print(f"    True component mean: {fdr_estimate.true_component_mean:.3f}")
         print(f"    False component mean: {fdr_estimate.false_component_mean:.3f}")
-        print(f"    Estimated true proportion: {fdr_estimate.true_component_weight:.1%}")
     except Exception:
         fdr_estimate = None
-        print("    Using simple estimator (install scikit-learn for mixture model)")
 
-    # Generate report cards
-    print("\n  Generating report cards...")
-
+    # Generate reports
     reports_dir = os.path.join(output_dir, 'reports')
     os.makedirs(reports_dir, exist_ok=True)
-
-    # Individual reports
     for result in results:
         report = generate_report_card(result)
-        report_path = os.path.join(reports_dir, f"{result.sv_id}.txt")
-        with open(report_path, 'w') as f:
+        with open(os.path.join(reports_dir, f"{result.sv_id}.txt"), 'w') as f:
             f.write(report)
 
-    # Summary table
     summary = generate_summary_table(results)
-    summary_path = os.path.join(output_dir, 'validation_summary.txt')
-    with open(summary_path, 'w') as f:
+    with open(os.path.join(output_dir, 'validation_summary.txt'), 'w') as f:
         f.write(summary)
-
     print(summary)
-    print(f"\n  Individual reports: {reports_dir}/")
-    print(f"  Summary: {summary_path}")
 
-    # JSON output for programmatic use
+    # JSON output
     json_output = {
-        'pipeline': 'VALID-SV v0.1.0',
-        'status': 'DEVELOPMENT — estimates are approximate',
+        'pipeline': 'VALID-SV v0.9.4',
         'n_svs_validated': len(results),
-        'fdr_estimate': {
-            'method': 'mixture_model' if fdr_estimate else 'simple_empirical',
-            'thresholds': fdr_estimate.thresholds if fdr_estimate else
-                         estimate_fdr(all_tscores).thresholds,
-        } if all_tscores else {},
         'results': [r.to_dict() for r in results],
     }
-
     json_path = os.path.join(output_dir, 'validation_results.json')
     with open(json_path, 'w') as f:
         json.dump(json_output, f, indent=2)
-    print(f"  JSON output: {json_path}")
 
     print("\n" + "=" * 70)
     print("  VALIDATION COMPLETE")
     print("=" * 70)
-    print("\n  ⚠️  IMPORTANT CAVEATS:")
-    print("  1. T-scores and FDR estimates are APPROXIMATE")
-    print("  2. Calibrate with synthetic benchmarks before publication")
-    print("  3. Experimental validation required for biological conclusions")
-    print("  4. This is a hypothesis-generation tool, not a truth machine")
     print()
 
     return json_output
@@ -442,32 +370,17 @@ if not _annotation_tsv:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='VALID-SV: Triangulation-based SV validation',
-        epilog='Development version — estimates are approximate.'
-    )
-
-    parser.add_argument('--consensus-vcf', required=True,
-                       help='ICB consensus VCF file')
-    parser.add_argument('--bam', required=True,
-                       help='Aligned BAM file (sorted + indexed)')
-    parser.add_argument('--reference', required=True,
-                       help='Reference genome FASTA (indexed)')
-    parser.add_argument('--fastq', default=None,
-                       help='Raw PacBio HiFi reads (for k-mer layer)')
-    parser.add_argument('--output', default='results/validation',
-                       help='Output directory')
-    parser.add_argument('--min-support', type=int, default=1,
-                       help='Minimum ICB support (1-3)')
-    parser.add_argument('--max-svs', type=int, default=None,
-                       help='Max SVs to validate (for testing)')
-    parser.add_argument('--skip-kmer', action='store_true',
-                       help='Skip k-mer layer (if jellyfish unavailable)')
-    parser.add_argument('--ablation', action='store_true',
-                       help='Run each validation layer individually for ablation study')
-    parser.add_argument('--jellyfish-db', default=None,
-                       help='Pre-built jellyfish database (.jf)')
-    parser.add_argument('--threads', type=int, default=4,
-                       help='Threads for parallel steps')
+        description='VALID-SV: Triangulation-based SV validation')
+    parser.add_argument('--consensus-vcf', required=True)
+    parser.add_argument('--bam', required=True)
+    parser.add_argument('--reference', required=True)
+    parser.add_argument('--fastq', default=None)
+    parser.add_argument('--output', default='results/validation')
+    parser.add_argument('--min-support', type=int, default=1)
+    parser.add_argument('--max-svs', type=int, default=None)
+    parser.add_argument('--skip-kmer', action='store_true')
+    parser.add_argument('--jellyfish-db', default=None)
+    parser.add_argument('--threads', type=int, default=4)
 
     args = parser.parse_args()
 
@@ -480,7 +393,6 @@ def main():
         min_support=args.min_support,
         max_svs=args.max_svs,
         skip_kmer=args.skip_kmer,
-        ablation=args.ablation,
         jellyfish_db=args.jellyfish_db,
         threads=args.threads,
     )

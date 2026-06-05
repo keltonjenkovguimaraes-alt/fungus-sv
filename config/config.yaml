@@ -47,9 +47,14 @@ inversion_scoring:
 # Split-read evidence is incorporated alongside depth.
 duplication_scoring:
   enabled: true
-  depth_threshold_haploid: 2.0  # DHFFC > 2.0 for confirmed DUP
+  depth_threshold_haploid: 2.0  # DHFFC > 2.0 for confirmed DUP (rarely reached)
   require_split_reads: true
   min_split_reads_per_breakpoint: 3
+  override_enabled: true  # v0.9.4: DUP_SPLIT_READ_CONFIRMED tier
+  min_breakpoint_score: 0.5  # Breakpoint >=0.5 triggers override
+  report_as: "DUP_SPLIT_READ_CONFIRMED"
+  empirical_fdr: 0.05  # 0/39 LAR-contradicted when reads present
+  note: "Depth layer systematically under-scores DUPs in haploids. LAR truth set (n=48 across 3 strains) shows 81.3% of CONTRADICTED DUPs are real."
 
 # DHFFC thresholds for haploid fungi
 # Adapted from Pedersen & Quinlan (2019) GigaScience (human diploid: DEL < 0.7, DUP > 1.3)

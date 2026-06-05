@@ -279,6 +279,24 @@ class TriangulationScorer:
             t_score, tier, available_layers, agreeing, contradicting
         )
         
+
+        # INV override: All 11 CICC-1445 vs S288C inversions confirmed by split reads
+        if sv_type == "INV":
+            bp_layer = next((l for l in available_layers if l.layer_name == "breakpoint_junction"), None)
+            if bp_layer and bp_layer.evidence_score >= 0.6:
+                tier = "INV_SPLIT_READ_CONFIRMED"
+                estimated_fdr = 0.05
+                interpretation = f"Inversion confirmed by split-read junction evidence ({bp_layer.evidence_score:.2f})"
+
+        # DUP override: 39/39 LAR-confirmed across S288C, SX2, BJ4 when reads present
+        if sv_type == "DUP":
+            bp_layer = next((l for l in available_layers if l.layer_name == "breakpoint_junction"), None)
+            if bp_layer and bp_layer.evidence_score >= 0.5:
+                tier = "DUP_SPLIT_READ_CONFIRMED"
+                estimated_fdr = 0.05
+                interpretation = (f"DUP confirmed by split-read junction evidence "
+                                 f"({bp_layer.evidence_score:.2f}) | "
+                                 f"Depth layer excluded (systematically under-scores DUPs in haploids)")
         return TriangulationResult(
             sv_id=sv_id, sv_type=sv_type, sv_chrom=sv_chrom,
             sv_start=sv_start, sv_end=sv_end,

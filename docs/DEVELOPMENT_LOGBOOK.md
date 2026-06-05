@@ -519,3 +519,40 @@ flye --pacbio-hifi <fastq> --genome-size <window_size> --read-error 0.005 --meta
 - LAR-test HIGH/DOUBLE_CONFIRMED SVs
 - Test full pipeline with Layer 6 integrated
 - Peter et al. Step 3 (Ty2 validation)
+
+
+---
+
+### 2026-06-05 — Complete DUP LAR Calibration Dataset
+
+**S288C DUPs (18/18 complete):**
+- 16/18 confirmed (88.9%)
+- 1 timeout (chrXI 17.5 kb)
+- 1 insufficient reads (chrI 913 bp, only 12 reads)
+- All 18 scored CONTRADICTED (T=0.167) by pipeline
+
+**SX2 DUPs (18/18 complete):**
+- 15/18 confirmed (83.3%)
+- 1 mtDNA assembly failed (chrM 42 kb)
+- 1 timeout (chrXIV 3.2 kb)
+- 1 timeout (chrI 61 bp)
+- All 18 scored CONTRADICTED by pipeline
+
+**Cross-strain DUP truth set:**
+| Strain | Tested | Confirmed | % Real |
+|--------|--------|-----------|--------|
+| S288C | 18 | 16 | 88.9% |
+| SX2 | 18 | 15 | 83.3% |
+| **Total** | **36** | **31** | **86.1%** |
+
+**Remaining DUPs:** BJ4 (13), IMX2600 (20), Makgeolli (17) = 50 remaining
+
+**Key finding:** Pipeline systematically fails DUPs across strains.
+86% of CONTRADICTED DUPs are real. Depth layer (DHFFC >2.0) 
+cannot confirm duplications in haploids. LAR is essential for DUP validation.
+
+**LAR performance metrics:**
+- Average reads extracted: 150-300 per DUP
+- Flye RAM: <500 MB, Time: 2-10 min per DUP
+- Success rate: 86% (31/36 confirmed)
+- Failure modes: timeout (3), insufficient reads (1), mtDNA assembly (1)

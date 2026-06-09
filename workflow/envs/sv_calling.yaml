@@ -2,6 +2,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - python=3.7
   - sniffles=2.2
-  - cutesv=1.0.8
-  - pbsv=2.11.0
+  - cutesv=1.0.11
+  - svim=1.4.2

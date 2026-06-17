@@ -28,7 +28,7 @@ rule minimap2_align:
     output:
         bam = "results/alignment/{sample}.sorted.bam",
         bai = "results/alignment/{sample}.sorted.bam.bai"
-    conda: "/home/kelto/miniforge3/envs/sv_align"
+    conda: "workflow/envs/alignment.yaml"
     threads: 8
     shell:
         """
@@ -45,10 +45,10 @@ rule icb_consensus:
         ref = "data/reference/reference.fasta"
     output:
         consensus = "results/variants/consensus/{sample}.consensus_svs.vcf"
-    conda: "/home/kelto/miniforge3/envs/sv_call"
+    conda: "workflow/envs/sv_calling.yaml"
     threads: 8
     params:
-        callers = ["pbsv", "sniffles2", "cutesv"],
+        callers = " ".join(config["icb"]["callers"]),
         min_callers = 2,
         min_overlap = 0.5
     shell:
@@ -64,25 +64,26 @@ rule icb_consensus:
         """
 
 
-rule lar_refine:
-    """Phase 1 (optional): Refine SV breakpoints via local assembly (LAR)."""
-    input:
-        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
-        bam = "results/alignment/{sample}.sorted.bam",
-        ref = "data/reference/reference.fasta"
-    output:
-        refined = "results/variants/refined/{sample}.refined_svs.vcf"
-    conda: "/home/kelto/miniforge3/envs/sv_lar"
-    threads: 4
-    shell:
-        """
-        python fungus_sv/modules/local_assembly.py \
-            --consensus {input.consensus} \
-            --bam {input.bam} \
-            --reference {input.ref} \
-            --output {output.refined} \
-            --threads {threads}
-        """
+#rule lar_refine:
+#    """Phase 1 (optional): Refine SV breakpoints via local assembly (LAR).
+#    NOTE: LAR is standalone (valid_sv/evidence/layer_lar.py). Run manually."""
+#    input:
+#        consensus = "results/variants/consensus/{sample}.consensus_svs.vcf",
+#        bam = "results/alignment/{sample}.sorted.bam",
+#        ref = "data/reference/reference.fasta"
+#    output:
+#        refined = "results/variants/refined/{sample}.refined_svs.vcf"
+#    conda: "workflow/envs/lar.yaml"
+#    threads: 4
+#    shell:
+#        """
+#        python fungus_sv/modules/local_assembly.py \
+#            --consensus {input.consensus} \
+#            --bam {input.bam} \
+#            --reference {input.ref} \
+#            --output {output.refined} \
+#            --threads {threads}
+#        """
 
 
 rule build_kmer_db:
@@ -91,7 +92,7 @@ rule build_kmer_db:
         fq = "data/raw/{sample}.fastq.gz"
     output:
         jf = "results/kmers/{sample}.jf"
-    conda: "/home/kelto/miniforge3/envs/sv_kmers"
+    conda: "workflow/envs/kmers.yaml"
     threads: 4
     shell:
         """
@@ -111,7 +112,7 @@ rule validate_triangulation:
     output:
         summary = "results/validation/{sample}/validation_summary.txt",
         json = "results/validation/{sample}/validation_results.json"
-    conda: "/home/kelto/miniforge3/envs/sv_valid"
+    conda: "workflow/envs/validation.yaml"
     threads: 8
     shell:
         """
@@ -132,7 +133,7 @@ rule report:
         json = "results/validation/{sample}/validation_results.json"
     output:
         report = "results/validation/{sample}/report_cards.tsv"
-    conda: "/home/kelto/miniforge3/envs/sv_valid"
+    conda: "workflow/envs/validation.yaml"
     shell:
         """
         python valid_sv/reporting/report_card.py \

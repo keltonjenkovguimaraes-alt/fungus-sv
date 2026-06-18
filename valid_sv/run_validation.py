@@ -146,7 +146,7 @@ def run_validation_pipeline(consensus_vcf, bam_path, reference_path, fastq_path,
         if sv['svtype'] in ('DEL', 'DUP'):
             try:
                 depth_result = analyze_depth_signature(bam_path, sv['id'], sv['svtype'],
-                    sv['chrom'], sv['pos'], sv['end'])
+                    sv['chrom'], int(sv['pos']), int(sv['end']))
                 layer_results.append(LayerResult("depth_signature", depth_result.evidence_score,
                     depth_result.verdict.value, True, CALIBRATED_WEIGHTS['depth_signature'],
                     depth_result.details))
@@ -161,7 +161,7 @@ def run_validation_pipeline(consensus_vcf, bam_path, reference_path, fastq_path,
         if not skip_kmer and fastq_path and sv['svtype'] in ('DEL', 'INS'):
             try:
                 kmer_result = analyze_kmer_spectrum(fastq_path, reference_path,
-                    sv['id'], sv['svtype'], sv['chrom'], sv['pos'], sv['end'], jf_db=kmer_db)
+                    sv['id'], sv['svtype'], sv['chrom'], int(sv['pos']), int(sv['end']), jf_db=kmer_db)
                 layer_results.append(LayerResult("kmer_spectrum", kmer_result.evidence_score,
                     kmer_result.verdict.value, True, CALIBRATED_WEIGHTS['kmer_spectrum'],
                     kmer_result.details))
@@ -175,7 +175,7 @@ def run_validation_pipeline(consensus_vcf, bam_path, reference_path, fastq_path,
         # Layer 4: Breakpoint
         try:
             bp_result = analyze_breakpoint_junctions(bam_path, sv['id'], sv['svtype'],
-                sv['chrom'], sv['pos'], sv['end'])
+                sv['chrom'], int(sv['pos']), int(sv['end']))
             layer_results.append(LayerResult("breakpoint_junction", bp_result.evidence_score,
                 bp_result.verdict.value, True, CALIBRATED_WEIGHTS['breakpoint_junction'],
                 bp_result.details))

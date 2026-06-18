@@ -1,0 +1,22 @@
+# Data files (too large)
+data/
+*.bam
+*.bam.bai
+*.fastq.gz
+*.fasta
+*.fasta.fai
+*.mmi
+*.jf
+
+# Results
+results/
+benchmarking/
+figures/
+test_dataset/data/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.git

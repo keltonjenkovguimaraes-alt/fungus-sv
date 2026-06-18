@@ -3,4 +3,4 @@ channels:
   - bioconda
 dependencies:
   - python=3.10
-  - jellyfish=2.3.0
+  - jellyfish

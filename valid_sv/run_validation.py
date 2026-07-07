@@ -108,8 +108,8 @@ def run_validation_pipeline(consensus_vcf, bam_path, reference_path, fastq_path,
     with open(_config_path) as f:
         _config = yaml.safe_load(f)
     CALIBRATED_WEIGHTS = _config.get('weights', {
-        'local_assembly': 0.20, 'depth_signature': 0.35,
-        'kmer_spectrum': 0.15, 'breakpoint_junction': 0.30,
+        'local_assembly': 0.20, 'depth_signature': 0.65,
+        'kmer_spectrum': 0.15, 'breakpoint_junction': 0.0,
         'ploidy_confirmation': 0.0,
     })
 

@@ -27,9 +27,9 @@ icb:
 # See docs/calibration_notes.md for full rationale
 weights:
   local_assembly: 0.20
-  depth_signature: 0.35
+  depth_signature: 0.65  # v1.1: breakpoint weight redistributed
   kmer_spectrum: 0.15
-  breakpoint_junction: 0.30
+  breakpoint_junction: 0.0  # v1.1: confirmatory only (always saturates at 1.0)
   ploidy_confirmation: 0.0  # hard filter, not scored
 
 # Inversion-specific handling

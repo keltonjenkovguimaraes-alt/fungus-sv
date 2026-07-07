@@ -556,3 +556,350 @@ cannot confirm duplications in haploids. LAR is essential for DUP validation.
 - Flye RAM: <500 MB, Time: 2-10 min per DUP
 - Success rate: 86% (31/36 confirmed)
 - Failure modes: timeout (3), insufficient reads (1), mtDNA assembly (1)
+
+---
+
+## 2026-06-16 to 2026-06-18 — v1.0.0 Publication Readiness Sprint
+
+### Docker Container
+- Created Dockerfile with all 5 conda environments (sv_align, sv_call, sv_valid, sv_lar, sv_kmers)
+- Added .dockerignore to exclude 55 GB of data from build context
+- Fixed lar.yaml: added miniasm=0.3 and racon=1.5.0 (present locally but missing from YAML)
+- Fixed validation.yaml: added samtools and bcftools (present locally via system PATH, missing in container)
+- Fixed kmers.yaml: unpinned jellyfish version (2.3.0 not available in Docker architecture)
+- Added int() casts in run_validation.py for pos/end parameters (Python 3.11 type safety)
+- Added HEALTHCHECK to Dockerfile
+- Built and tested Docker image — produces identical T-scores to local installation
+- Docker image size: 4.3 GB (all 5 environments with tools)
+
+### Benchmarking
+- Ran MUMmer4 on all 5 Saccharomyces and 5 Candida strains
+- Ran SVIM-asm on all 10 strains
+- Compared individual callers (Sniffles2, cuteSV, SVIM) vs ICB consensus
+- Key findings:
+  - ICB consensus removes 80–95% of single-caller noise
+  - SVIM-asm missed 6/7 LAR-confirmed SVs on S288C
+  - SVIM-asm found 0 DUPs across all 10 strains
+  - FUNGUS-SV found 9–70 DUPs per strain
+  - Assembly fragmentation inflates SV counts (UAB012: 893, ATCC64124: 111)
+- Created scripts/run_benchmarking.sh for reproducibility
+
+### LAR Truth Set Expansion
+- Ran 10 additional LAR SVs (5 Saccharomyces + 5 Candida) — batch incomplete
+- 2 completed: S288C INV 168 kb (PARTIAL), BJ4 INV 65 kb (PARTIAL)
+- 3 timeouts resolved by Samplot: all confirmed real
+  - S288C INV 168 kb: Real INV (Samplot zoom confirmed)
+  - SX2 DUP 59 kb: Real, complex (repetitive/multicopy context)
+  - 101 INV 508 kb: Real, complex (INV with internal deletion)
+- Total LAR truth set: 140 SVs across 12 strains
+
+### Samplot Visual Validation
+- Completed SC5314 self-alignment Samplot review (10/10 SVs)
+  - 8 confirmed real, 1 false positive, 1 real but mis-sized
+  - LAR + Samplot accuracy: 10/10 (100%)
+- Key findings:
+  - --zoom flag essential for SVs >50 kb
+  - Two-assembler design prevented false negatives (Flye missed 2 INVs, Miniasm caught them)
+  - Flye alone produced 1 false positive (Miniasm contradicted, Samplot confirmed)
+  - ~32% of SVs require visual tie-breaking
+
+### Snakefile Fixes
+- Fixed callers: "pbsv" → reads from config.yaml (sniffles2, cutesv, svim)
+- Fixed conda paths: absolute (/home/kelto/...) → relative YAML (workflow/envs/*.yaml)
+- Commented out dead lar_refine rule (local_assembly.py was deleted)
+- 6 active rules remain
+
+### Test Dataset
+- Created minimal test dataset: S288C mitochondrial chromosome (NC_001224.1, 85 kb, 8,789 reads)
+- Full pipeline runs in <5 minutes
+- Verified end-to-end in both local and Docker
+
+### Documentation
+- BENCHMARKING_COMPLETE.md — full comparison across all tools
+- SAMPLOT_VALIDATION_COMPLETE.md — 19-SV cross-genus visual validation
+- PRESENTATION_FUNGUS_SV.md — presentation guide with 10 schemes
+- SCHEMES_PIPELINE.md — detailed pipeline diagrams
+- PUBLICATION_SUMMARY.md — final summary of everything built
+- README.md — comprehensive v1.0.0 README
+
+### GitHub
+- Pushed all core code changes (Snakefile, env YAMLs, Dockerfile, .dockerignore)
+- Clean commit history
+- Local and GitHub in sync
+
+### Storage
+- Docker data disk (docker_data.vhdx) compacted from 88 GB → 2.22 GB
+- Reclaimed ~86 GB on C: drive
+
+### Status
+- Pipeline: PUBLICATION READY ✅
+- Docker: TESTED AND VERIFIED ✅
+- Benchmarking: COMPLETE ✅
+- Documentation: COMPLETE ✅
+- Manuscript: PENDING
+
+
+---
+
+## 2026-06-18 to 2026-06-20 — v1.0.0 Final Sprint: Figures, External Validation, Manuscript
+
+### Docker Pipeline Completion
+- Built and tested Docker container with all 5 conda environments
+- Discovered samtools missing from validation.yaml — added samtools and bcftools
+- Discovered miniasm and racon missing from lar.yaml — added both
+- Added .dockerignore to prevent 55 GB of data from being copied into image
+- Docker image size: ~4.3 GB
+- End-to-end Docker test produces identical T-scores to local installation
+- Added HEALTHCHECK to Dockerfile
+- Fixed jellyfish version pinning (unpinned for Docker compatibility)
+- Fixed int() casts in run_validation.py for Python 3.11 compatibility
+
+### Storage Crisis
+- Docker build cache consumed 88 GB on C: drive
+- Compressed docker_data.vhdx from 88 GB → 2.22 GB using diskpart
+- Freed ~86 GB on Windows C: drive
+- Moved Docker storage recommendation to D: drive
+
+### Publication Figures Created (8 main + supplementary)
+
+**Main Figures:**
+1. `figure1_pipeline_workflow.png` — End-to-end pipeline schematic
+2. `figure_sv_counts.png` — SV counts per strain (both genera, stacked bars)
+3. `figure_icb_noise.png` — ICB consensus noise reduction across all strains
+4. `figure_lar_truth.png` — LAR truth set results (145 SVs, 13 strains)
+5. `figure_self_alignment.png` — Self-alignment empirical FDR baseline
+6. `figure_benchmarking.png` — Tool comparison (FUNGUS-SV vs 6 other tools)
+7. `figure_assembly_quality.png` — Assembly quality impact on SV detection
+8. `figure_false_positive_categories.png` — Why LAR rejects SVs (38 rejected)
+9. `figure_ogg_comparison.png` — FUNGUS-SV vs Oggenfuss et al. (2025)
+
+**Scripts:**
+- All figures generated via matplotlib scripts in `figures/plot_*.py`
+- Samplot annotation scripts created for publication-quality images
+
+### Math Audit — Complete Verification
+- All percentages recalculated from raw data
+- ICB noise reduction: S288C=92.7%, UAB012=85.4%, L26=90.1%, P75063=90.3%
+- LAR within-species: Saccharomyces=72% (36/50), Candida=74% (37/50), Combined=73% (73/100)
+- DUP calibration: 39/48=81.2% confirmed
+- Self-alignment TRIPLE: CICC-1445=3.1% (4/130), SC5314=2.5% (5/200)
+- SVIM-asm LAR recovery: 1/7=14.3%
+- Assembly quality: UAB012 TRIPLE=46.5% (416/893), ATCC64124 TRIPLE=9.0% (10/111)
+- Total SVs: Saccharomyces=1,527, Candida=2,083, Grand=3,610
+
+### External Tool Comparison Expanded
+- Added DeBreak to benchmarking: 521 SVs on S288C (232 DEL, 16 DUP, 22 INV, 221 INS, 30 TRA)
+- DeBreak detects insertions and translocations that FUNGUS-SV doesn't call
+- Ran Samplot on 5 largest DeBreak SVs: 2 confirmed false, 3 pending
+- Ran LAR on DeBreak calls: DEL 514kb contradicted (44kb actual), DUP 1Mb timed out
+- DeBreak's 1Mb DUP shown by Samplot to be a deletion with progressive coverage drop
+- Total comparison tools: 7 (Sniffles2, cuteSV, SVIM, DeBreak, FUNGUS-SV ICB, SVIM-asm, MUMmer4)
+- Attempted NanoSV and SVision — NanoSV failed (BED requirement), SVision not attempted
+
+### LAR Truth Set Expansion
+- Batch 3: 10 largest untested SVs across both genera
+  - 3 CONFIRMED (BJ4 INV 44kb, WO1 INV 35kb, UAB012 DUP 69kb)
+  - 3 PARTIAL (S288C INV 139kb, FDAARGOS656 INV 70kb, Makgeolli DEL 13kb)
+  - 4 CONTRADICTED (101 INV 85kb, S288C DEL 55kb, IMX2600 DUP 49kb, SX2 DEL 19kb)
+- Total LAR-validated: 145 SVs (across all batches)
+- LAR rejection categories: Size Mismatch (12), Timeout (9), Other (7), Assembly Failed (6), Contradicted (4)
+
+### External Validation — Oggenfuss et al. (2025)
+- Downloaded 3 C. albicans genome assemblies from NCBI (PRJNA967712)
+- Strains: SC5314, L26, P75063 — originally analyzed with ONT + DELLY
+- Ran FUNGUS-SV (PacBio HiFi) on SC5314 vs L26 and SC5314 vs P75063
+- Results:
+  - L26: 230 SVs (FUNGUS-SV) vs 679 (DELLY) — 90.1% ICB reduction
+  - P75063: 333 SVs (FUNGUS-SV) vs 864 (DELLY) — 90.3% ICB reduction
+- Identified centromeric inversions matching Oggenfuss findings:
+  - CEN4 (JBIBQQ010000014.1, 3.1 kb): LAR CONFIRMED (both assemblers)
+  - CEN5 (JBIBQQ010000005.1, 20.8 kb): LAR PARTIAL (Flye confirmed, Miniasm contradicted)
+- First external validation of FUNGUS-SV against published data
+
+### Critical Self-Review
+- Identified overconfident claims needing revision:
+  1. "72% confirmation rate" → Add technically-successful rate (88%)
+  2. "FDR ~0% for DUP/INV" → "No biologically contradictory cases observed"
+  3. "100% Samplot accuracy" → "All 19 inspected consistent with consensus"
+  4. Weight selection → Acknowledge heuristic, not formal optimization
+  5. Layer independence → Acknowledge partial dependence
+  6. TRIPLE FDR ~3% → Note wide confidence intervals with 4-5 events
+- All changes will be reflected in final manuscript
+
+### Manuscript Status
+- Complete draft with all sections
+- Figure legends written for all 9 main figures
+- Supplementary figure plan defined (7 figures)
+- [FILL] sections identified for author input
+- External validation section strengthened with Oggenfuss comparison
+- Honest limitations section drafted
+
+### GitHub
+- All core code committed and pushed
+- Dockerfile, .dockerignore, updated env YAMLs pushed
+- Clean commit history
+
+### Next Steps
+- Final manuscript revisions
+- Zenodo upload
+- Submit to BMC Bioinformatics or Genome Biology
+
+
+2026-06-26 — Samplot Review & Backtrack Layer Development
+
+Precision-Recall Analysis
+- Ran precision-recall on all 133 LAR-matched SVs (including batch4: 20 new SVs from June 25)
+- 75 CONFIRMED, 25 BIOLOGICAL_FP, 33 TECHNICAL_FAILURE
+- Excluding technical failures: 100 biologically resolved SVs
+- DEL tier system works: TRIPLE (T≥0.80) = 87.5% precision (14/16), DOUBLE = 88.2% (15/17)
+- DUP/INV tiers inverted by raw T-score: all INVs T<0.20, all DUPs initially CONTRADICTED
+- CONTRADICTED-but-CONFIRMED: 36 SVs (21 DEL, 15 INV) — overrides fix this
+- Generated figure_precision_recall.png (4 panels: PR curve, T-score distribution, 3-category bar, precision by SV type)
+
+TRIPLE-Tier False Positive Investigation
+- Identified 19 unique TRIPLE (T≥0.80) non-CONFIRMED SVs across all LAR batches
+- Classified into 3 categories:
+  - Category A (Technical Failures): 4 SVs — timeout/insufficient reads → excluded from analysis
+  - Category B (PARTIAL): 6 SVs — one assembler confirmed, one failed/contradicted → Samplot needed
+  - Category C (Both contradicted): 4 SVs — both assemblers agree SV is false → likely true FPs
+  - Category D (Size mismatch): 2 SVs — real SV but pipeline overestimated size → reclassify as CONFIRMED
+- Generated 12 Samplots for Category B, C, D SVs
+- Fixed contig name mapping: CP127* = IMX2600, CP025* = Makgeolli, LR813523.2 = BJ4, CM000309.1 = WO1
+- Samplots saved to figures/TRIPLE_FP_samplot/
+
+Batch 4 LAR (20 SVs, June 25)
+- Extracted and classified all 20 SVs from data/LAR_batch4/LAR_batch4.log
+- 13 CONFIRMED (both assemblers), 1 PARTIAL, 2 CONTRADICTED, 4 technical failures
+- Key finding: DEL sizes systematically underestimated by pipeline (called 6.5-14.7 kb, LAR finds 12.5-60 kb)
+- DUP confirmation: 4/4 technically successful DUPs confirmed (100%)
+- INV confirmation: 3/3 confirmed (100%)
+- PLOIDY_WARNING on most Miniasm runs (assembly_ploidy 1.41-12.40)
+- Integrated into precision-recall dataset
+
+Backtrack Layer Development (layer_backtrack.py)
+- New evidence layer: aligns reads to original vs SV-modified reference sequences
+- Fast, orthogonal to depth/breakpoint/LAR, works for all SV types
+- Initial bug: capture_output=True failed on binary BAM output from samtools
+- Fix 1: Changed to stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+- Second bug: minimap2 not installed in sv_valid environment
+- Fix 2: Hardcoded path to sv_align minimap2 (/home/kelto/miniforge3/envs/sv_align/bin/minimap2)
+- Third issue: Read count metric couldn't distinguish large DELs (609 vs 609 aligned reads)
+- Fix 3: Changed metric to split-read count (SA tag) for DELs — more sensitive to breakpoint-spanning reads
+- Fix 4: Inverted ratio logic for DELs (ratio = orig_splits / mod_splits; high ratio = supports deletion)
+- Fix 5: Adjusted verdict thresholds for DELs: ratio >5.0 = STRONG_SUPPORT, >2.0 = WEAK, <1.1 = CONTRADICTS
+
+Backtrack Validation Results
+- Makgeolli DEL 7kb (CP025104.1_471195_112, LAR CONFIRMED both):
+  - 107 split-reads in original, 6 in modified → ratio 17.83 → STRONG_SUPPORT (score 1.000)
+  - Quadruple-confirmed: ICB + Triangulation + LAR + Backtrack
+- Makgeolli DEL 19.3kb (CP025112.1_916639_231, LAR PARTIAL):
+  - 480 split-reads in original, 33 in modified → ratio 14.55 → STRONG_SUPPORT
+- IMX2600 DEL 12.5kb (CP127210.1_446292_298, LAR CONFIRMED both):
+  - 43 split-reads in original, 24 in modified → ratio 1.79 → AMBIGUOUS
+  - Tested multiple flank sizes (5kb, 10kb, 15kb) — same result
+
+Makgeolli CP025104.1 Anomaly
+- Samplot review shows DUP-like signal (high insert size), not DEL
+- Depth shows 327.5x in SV region, zero zero-depth bases — inconsistent with haploid DEL
+- All 3 callers + LAR + backtrack say DEL → contradiction with raw coverage/insert size
+- Possible complex SV (inverted duplication?) — requires further investigation
+
+Files Modified
+- valid_sv/evidence/layer_backtrack.py — major revisions (minimap2 path, split-read metric, DEL-specific logic)
+- docs/DEVELOPMENT_LOGBOOK.md — this update
+- figures/figure_precision_recall.png — generated
+- figures/TRIPLE_FP_samplot/ — 12 new Samplots
+
+Pending
+- Samplot review of 12 TRIPLE-tier SVs
+- Backtrack calibration against full LAR truth set
+- Integration of backtrack layer into run_validation.py scoring
+- Resolution of Makgeolli CP025104.1 anomaly
+- Final precision-recall figure after Samplot reclassification
+
+
+2026-07-01 — Backtrack Layer Rewrite: Pure Depth Reporting
+
+Design Decision
+- Removed all verdict logic and hard thresholds from backtrack layer
+- Backtrack now reports raw depth metrics only — no STRONG_SUPPORT/WEAK_SUPPORT/CONTRADICTS
+- Scoring and tier assignment belong in the triangulation scorer, not in individual evidence layers
+- This makes backtrack truly orthogonal: it measures depth facts, not interpretations
+
+Architecture Change
+- Before: 7 samtools depth calls (3 regions + 4 breakpoint windows), then verdict logic
+- After: 3 samtools depth calls (left flank, SV region, right flank), breakpoints use sliced pre-fetched arrays
+- Runtime reduced by ~60% (7→3 external calls)
+
+Metrics Reported (BacktrackReport dataclass)
+- Flanks: left_flank_mean, left_flank_median, right_flank_mean, right_flank_median
+- SV region: sv_region_mean, sv_region_median, sv_region_p10, sv_region_p90
+- Ratios: mean_ratio (sv_mean/flank_mean), median_ratio (sv_median/flank_median)
+- Sparsity: zero_fraction (bases with depth<5), low_fraction (bases with depth<10)
+- Breakpoints: left_drop_ratio (depth_after/depth_before at start), right_drop_ratio (at end),
+  left_drop_sharpness (bases until 50% threshold crossed), right_drop_sharpness
+- INV-specific: split_reads count, strand_bias (max of fwd_ratio, rev_ratio)
+
+How to Interpret the Numbers
+
+  DEL confirmation signals (stronger → weaker):
+  1. left_drop_ratio < 0.3: >70% depth drop at left breakpoint (strongest single signal)
+  2. zero_fraction > 0.30: at least 30% of bases at near-zero depth
+  3. median_ratio < 0.30: median depth in SV region less than 30% of flank median
+  4. sharpness < 50: depth transition occurs within 50bp (clean breakpoint)
+  5. p90 < flank_mean * 0.5: even the noisiest 10% of bases are below half flank depth
+
+  DEL contradiction signals:
+  1. median_ratio > 0.80: depth unchanged (not a deletion)
+  2. zero_fraction < 0.01 and p90 > flank_mean * 0.5: consistent depth throughout
+  3. Both left_drop_ratio and right_drop_ratio near 1.0: no breakpoint transitions
+
+  DUP confirmation signals:
+  1. mean_ratio > 1.5: depth increased >50% in SV region
+  2. median_ratio > 1.3: consistent duplication signal
+
+  INV confirmation signals:
+  1. strand_bias > 0.65: >65% of split reads on one strand
+  2. split_reads > 10: sufficient evidence
+  3. median_ratio ~1.0: depth unchanged (balanced event, as expected)
+
+  Boundary/edge artifacts to watch for:
+  - One flank has very low depth (<10x): SV near contig boundary or assembly gap
+  - right_drop_ratio > 2.0: depth spike at right breakpoint (reads piling up at deletion edge)
+  - asymmetric flanks: left_flank ≠ right_flank (possible repeat or copy number variation)
+
+Validated Cases
+
+  Case 1: IMX2600 DEL 6.2kb (LAR CONFIRMED both)
+  - Left flank 372x, Right flank 362x, SV median 98x
+  - Left drop 0.219 (78% drop), sharpness=0 (immediate)
+  - median_ratio 0.267, zero_fraction 0.02%
+  - Interpretation: Real deletion. Depth drops 78% but not to zero because
+    PacBio HiFi reads (15-20kb) span the 6.2kb deletion and maintain partial coverage.
+    The sharp left breakpoint and 73% median reduction confirm the DEL.
+  - Previous version called CONTRADICTS (threshold too strict at <0.05 median_ratio).
+
+  Case 2: Makgeolli CP025104.1 (LAR CONFIRMED both, but anomalous)
+  - Left flank 377x, Right flank 405x, SV median 95x
+  - Left drop 0.0 (no drop), zero_fraction 0.0%, p90=387x
+  - Interpretation: NOT a deletion. No depth change at all. Despite 3 callers
+    and LAR both confirming, the raw depth contradicts. Possible complex SV
+    misclassified as DEL. Backtrack caught this immediately.
+
+  Case 3: SX2 DEL (LAR CONTRADICTED, both assemblers found only 196-307bp)
+  - Left flank 127x, Right flank 3x, SV median 9x
+  - Left drop 0.014 (98.6% drop), zero_fraction 44.4%, right flank at 3x (boundary)
+  - Interpretation: Real deletion near contig boundary. The right flank at 3x
+    suggests the deletion extends to a contig end or assembly gap. LAR may have
+    failed because of the boundary. Backtrack numbers suggest this is real.
+
+Files Modified
+- valid_sv/evidence/layer_backtrack.py — complete rewrite (375→275 lines)
+- valid_sv/evidence/layer_backtrack_verdicts.py — backup of version with verdicts
+- valid_sv/evidence/layer_backtrack_complex.py — original minimap2 version backup
+
+Next Steps
+- Integrate backtrack report into run_validation.py scoring
+- Define scoring weights for each backtrack metric per SV type
+- Run backtrack on full LAR truth set to calibrate signal thresholds
+- Test on DUPs and INVs

@@ -30,3 +30,5 @@ test_pipeline_logic.py
 
 # Old single env
 workflow/envs/environment.yaml
+docs/
+figures/

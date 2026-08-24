@@ -32,3 +32,4 @@ test_pipeline_logic.py
 workflow/envs/environment.yaml
 docs/
 figures/
+scripts/

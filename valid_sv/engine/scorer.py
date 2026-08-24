@@ -22,10 +22,10 @@ import json
 class TScoreTier(Enum):
     """Interpretation of triangulation score."""
     TRIPLE_TRIANGULATED = (0.80, 1.00, "Supported by ≥3 orthogonal layers; FDR <5%")
-    DOUBLE_CONFIRMED = (0.60, 0.79, "Supported by ≥2 layers; FDR 5-20%")
-    SINGLE_LINE = (0.40, 0.59, "Single line of evidence; FDR 20-50%")
-    WEAK = (0.20, 0.39, "Weak/conflicting evidence; FDR >50%")
-    CONTRADICTED = (0.00, 0.19, "Evidence contradicts; likely false positive")
+    DOUBLE_CONFIRMED = (0.60, 0.80, "Supported by ≥2 layers; FDR 5-20%")
+    SINGLE_LINE = (0.40, 0.60, "Single line of evidence; FDR 20-50%")
+    WEAK = (0.20, 0.40, "Weak/conflicting evidence; FDR >50%")
+    CONTRADICTED = (0.00, 0.20, "Evidence contradicts; likely false positive")
 
     def __init__(self, low: float, high: float, description: str):
         self.low = low
@@ -37,7 +37,7 @@ class TScoreTier(Enum):
         for tier in cls:
             if tier.low <= score <= tier.high:
                 return tier
-        return cls.CONTRADICTED if score < 0 else cls.TRIPLE_TRIANGULATED
+        return cls.CONTRADICTED
 
 
 @dataclass
@@ -122,13 +122,10 @@ class TriangulationResult:
 # These are PRIOR weights — spike-in calibration will refine them
 DEFAULT_WEIGHTS = {
     'alignment_consensus': 0.0,     # Excluded: circular validation
-    'local_assembly': 0.20,         # Highest: assembly confirms exact breakpoints (Liu Fig 3)
-# SV-MeCa (Nkouamedjo et al. 2025): XGBoost on per-caller quality features
-# outperforms uniform weighting. These uniform weights are placeholders
-# pending XGBoost training on spike-in calibration data.
-    'depth_signature': 0.35,        # Independent of alignment (alignment-free)
-    'kmer_spectrum': 0.15,          # Independent of alignment (alignment-free)
-    'breakpoint_junction': 0.30,    # Relies on alignment SA tags (moderate)
+    'local_assembly': 0.20,         # Assembly confirms exact breakpoints
+    'depth_signature': 0.65,        # v1.1: primary discriminative layer (breakpoint weight redistributed)
+    'kmer_spectrum': 0.15,          # Optional (not run in this study)
+    'breakpoint_junction': 0.00,    # v1.1: confirmatory flag (formula saturates at 1.0 for all ICB-consensus SVs)
     'ploidy_confirmation': 0.0,
 }
 

@@ -229,7 +229,7 @@ def analyze_depth_signature(bam_path, sv_id, sv_type, chrom, start, end,
                        f"size={sv_size}bp); supports duplication")
         elif combined_ratio > 1.3:
             verdict = DepthVerdict.CONSISTENT
-            score = (0.5 + (combined_ratio - 1.2) * 1.67) * size_factor
+            score = min(1.0, (0.5 + (combined_ratio - 1.2) * 1.67)) * size_factor
             details = (f"Modest coverage increase{repeat_warning} "
                        f"(DHFFC={depth_ratio:.3f}, DHBFC={dhbfc:.3f}, combined={combined_ratio:.3f}, "
                        f"size={sv_size}bp); weakly supports duplication")

@@ -14,7 +14,7 @@ def run_cmd(cmd, desc="", timeout=3600):
     if desc:
         print(f"\n  [{desc}]")
     print(f"  $ {' '.join(cmd) if isinstance(cmd, list) else cmd[:100]}")
-    result = subprocess.run(cmd, capture_output=True, text=True, 
+    result = subprocess.run(cmd, capture_output=True, text=True,
                           timeout=timeout, shell=isinstance(cmd, str))
     if result.returncode != 0:
         print(f"  WARNING: {result.stderr[:300]}")
@@ -40,78 +40,129 @@ def parse_truth(truth_vcf):
 def evaluate(consensus_vcf, truth_vcf, validation_json, output_dir):
     """Compare pipeline output to truth set and compute metrics."""
     truth = parse_truth(truth_vcf)
-    
+
     # Parse consensus SVs
     consensus = []
     with open(consensus_vcf) as f:
         for line in f:
-            if line.startswith('#'): continue
+            if line.startswith('#'):
+                continue
             parts = line.strip().split('\t')
             m = re.search(r'SVTYPE=(\w+)', parts[7])
             svtype = m.group(1) if m else 'UNK'
             consensus.append({
-                'id': parts[2], 'chrom': parts[0],
-                'pos': int(parts[1]), 'type': svtype
+                'id': parts[2],
+                'chrom': parts[0],
+                'pos': int(parts[1]),
+                'type': svtype
             })
-    
+
     # Parse validation results
     with open(validation_json) as f:
         vdata = json.load(f)
-    
-    tscores = {r['sv_id']: r['t_score'] for r in vdata['results']}
-    
-    # Match consensus to truth (≤2kb distance, same type)
-    matched = []
-    for csv in consensus:
-        t = tscores.get(csv['id'], 0)
+
+    tscores = {}
+    if isinstance(vdata, dict) and 'results' in vdata:
+        tscores = {r['sv_id']: r['t_score'] for r in vdata['results']}
+    elif isinstance(vdata, list):
+        tscores = {r['sv_id']: r['t_score'] for r in vdata}
+
+    # ------------------------------------------------------------------------------------------------------------------------
+    # FIX 1 + 2 + 3: One-to-one greedy matching with type tag.
+    # Each truth used once. Each consensus used once.
+    # 
+    # Build candidate pairs (distance, consensus_idx, truth_id)
+    candidates = []
+    for ci, csv in enumerate(consensus):
         for tid, tv in truth.items():
-            if (tv['chrom'] == csv['chrom'] and tv['type'] == csv['type'] 
-                and abs(tv['pos'] - csv['pos']) <= 2000):
-                matched.append({'id': csv['id'], 't_score': t, 'truth_id': tid})
-                break
-    
+            if (tv['chrom'] == csv['chrom'] and tv['type'] == csv['type']
+                    and abs(tv['pos'] - csv['pos']) <= 2000):
+                dist = abs(tv['pos'] - csv['pos'])
+                candidates.append((dist, ci, tid))
+
+    candidates.sort(key=lambda x: x[0])  # nearest first
+
+    used_truth = set()
+    used_consensus = set()
+    matches = []
+
+    for dist, ci, tid in candidates:
+        if tid in used_truth or ci in used_consensus:
+            continue
+        used_truth.add(tid)
+        used_consensus.add(ci)
+        matches.append({
+            'id': consensus[ci]['id'],
+            't_score': tscores.get(consensus[ci]['id'], 0),
+            'truth_id': tid,
+            'type': truth[tid]['type'],
+            'distance': dist
+        })
+
+    unmatched_consensus = [
+        c for ci, c in enumerate(consensus) if ci not in used_consensus
+    ]
+
     n_truth = len(truth)
     n_consensus = len(consensus)
-    n_tp = len(matched)
-    
-    # Compute metrics at different T-score thresholds
+    n_tp = len(matches)  # one-to-one true positives, all thresholds
+
+    # ------------------------------------------------------------------------------------------------------------------------
+    # FIX 4: Threshold-specific stats from the same match list.
+    # 
     thresholds = [0.2, 0.4, 0.6, 0.8]
-    results = {'n_truth': n_truth, 'n_consensus': n_consensus, 'n_tp': n_tp}
-    
+    results = {
+        'n_truth': n_truth,
+        'n_consensus': n_consensus,
+        'n_tp': n_tp,
+        'per_type': {}
+    }
+
+    # Per-type totals (all thresholds pooled)
+    all_types = sorted(set(tv['type'] for tv in truth.values()))
+    for svtype in all_types:
+        type_matches = [m for m in matches if m['type'] == svtype]
+        type_truth = sum(1 for tv in truth.values() if tv['type'] == svtype)
+        results['per_type'][svtype] = {
+            'truth_n': type_truth,
+            'tp': len(type_matches),
+            'fn': type_truth - len(type_matches),
+            'recall': round(len(type_matches) / type_truth, 4) if type_truth > 0 else 0
+        }
+
     for thresh in thresholds:
-        passing = [m for m in matched if m['t_score'] >= thresh]
-        tp = len(passing)
-        fp = sum(1 for csv in consensus 
-                if tscores.get(csv['id'], 0) >= thresh 
-                and not any(abs(tv['pos'] - csv['pos']) <= 2000 
-                           and tv['chrom'] == csv['chrom'] 
-                           and tv['type'] == csv['type'] 
-                           for tv in truth.values()))
-        
+        tp = sum(1 for m in matches if m['t_score'] >= thresh)
+        fp = sum(1 for c in unmatched_consensus
+                 if tscores.get(c['id'], 0) >= thresh)
+
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / n_truth if n_truth > 0 else 0
         f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-        
+
         results[f'T≥{thresh}'] = {
-            'tp': tp, 'fp': fp,
+            'tp': tp,
+            'fp': fp,
             'precision': round(precision, 4),
             'recall': round(recall, 4),
             'f1': round(f1, 4)
         }
-    
+
     # Save results
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, 'calibration_results.json'), 'w') as f:
         json.dump(results, f, indent=2)
-    
+
     print(f"\n{'='*60}")
-    print(f"  CALIBRATION RESULTS")
+    print(f"  CALIBRATION RESULTS (one-to-one matching)")
     print(f"{'='*60}")
     print(f"  Truth SVs: {n_truth}")
     print(f"  Consensus SVs: {n_consensus}")
     print(f"  True Positives (matched): {n_tp}")
     print(f"  Overall Precision: {n_tp/n_consensus*100:.1f}%" if n_consensus else "  N/A")
     print(f"  Overall Recall: {n_tp/n_truth*100:.1f}%" if n_truth else "  N/A")
+    print(f"\n  Per-type:")
+    for svtype, r in results['per_type'].items():
+        print(f"    {svtype}: truth={r['truth_n']} tp={r['tp']} fn={r['fn']} recall={r['recall']:.3f}")
     print(f"\n  T-score → FDR mapping:")
     for thresh in thresholds:
         r = results[f'T≥{thresh}']
@@ -119,9 +170,8 @@ def evaluate(consensus_vcf, truth_vcf, validation_json, output_dir):
         print(f"    T≥{thresh}: Precision={r['precision']:.3f}, Recall={r['recall']:.3f}, "
               f"F1={r['f1']:.3f}, est.FDR={fdr:.3f}")
     print(f"{'='*60}\n")
-    
-    return results
 
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description='FUNGUS-SV Calibration Pipeline')
@@ -130,12 +180,13 @@ def main():
     parser.add_argument('--n-svs', type=int, default=50)
     parser.add_argument('--coverage', type=int, default=58)
     parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--truth-vcf', required=True)
     args = parser.parse_args()
-    
+
     print("=" * 60)
     print("  FUNGUS-SV: Calibration Pipeline")
     print("=" * 60)
-    
+
     # Step 1: Generate spike-in SVs + simulate reads
     print("\n[1/4] Generating spike-in data...")
     run_cmd([
@@ -145,13 +196,13 @@ def main():
         '--n-svs', str(args.n_svs),
         '--coverage', str(args.coverage)
     ], "spike_in")
-    
+
     # Step 2: Align reads
     print("\n[2/4] Aligning reads...")
     ref = f'{args.output}/modified_reference.fasta'
     reads = f'{args.output}/simulated_reads.fastq.gz'
     bam = f'{args.output}/alignment/calib.sorted.bam'
-    
+
     if os.path.exists(reads):
         os.makedirs(f'{args.output}/alignment', exist_ok=True)
         run_cmd([
@@ -163,7 +214,7 @@ def main():
                  f"-R '@RG\\tID:calib\\tSM:calib_sample' {ref} {reads} "
                  f"| samtools sort -@ 4 -o {bam} - 2>/dev/null")
         os.system(f"samtools index {bam} 2>/dev/null")
-    
+
     # Step 3: Run ICB
     print("\n[3/4] Running ICB consensus...")
     consensus_vcf = f'{args.output}/consensus_svs.vcf'
@@ -176,15 +227,15 @@ def main():
         '--min-callers', '2',
         '--threads', str(args.threads)
     ], "ICB consensus")
-    
+
     # Fix output path
     actual_consensus = f'{args.output}/consensus_svs.vcf'
-    
+
     # Step 4: Run validation
     print("\n[4/4] Running validation...")
     val_dir = f'{args.output}/validation'
-    truth_vcf = 'results/benchmarks/synthetic_truth.vcf'
-    
+    truth_vcf = args.truth_vcf
+
     run_cmd([
         'python3', '-m', 'valid_sv.run_validation',
         '--consensus-vcf', actual_consensus,
@@ -194,7 +245,7 @@ def main():
         '--output', val_dir,
         '--threads', str(args.threads)
     ], "validation")
-    
+
     # Step 5: Evaluate
     val_json = f'{val_dir}/validation_results.json'
     if os.path.exists(actual_consensus) and os.path.exists(val_json):

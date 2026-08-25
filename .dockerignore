@@ -1,22 +1,59 @@
-# Data files (too large)
+# ============================================================
+# Data and user-provided inputs (never in Docker image)
+# ============================================================
 data/
+test_dataset/
+candida_ogg_validation/
+external_benchmark/
+benchmarking/
+
+# ============================================================
+# Results and generated outputs
+# ============================================================
+results/
+figures/
+figures_v1.1/
+*.png
+*.svg
+*.jpg
+*.pdf
+*.log
+
+# ============================================================
+# Large biological files
+# ============================================================
 *.bam
 *.bam.bai
+*.sam
+*.fastq
 *.fastq.gz
+*.fq
+*.fq.gz
 *.fasta
 *.fasta.fai
 *.mmi
 *.jf
+*.vcf
+*.vcf.gz
 
-# Results
-results/
-benchmarking/
-figures/
-test_dataset/data/
-*.log
+# ============================================================
+# Archives and temp files
+# ============================================================
+*.zip
+*.tar
+*.tar.gz
+*.swp
+*.swo
+*.tmp
 
+# ============================================================
 # Python cache
+# ============================================================
 __pycache__/
 *.pyc
 *.pyo
+
+# ============================================================
+# Version control
+# ============================================================
 .git

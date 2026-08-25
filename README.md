@@ -52,7 +52,13 @@ The backtrack layer supports two modes:
 - **Read-based**: uses split-read orientation and depth from a BAM file.
 - **Reference-based**: simulates the SV in silico on the reference assembly and realigns it with minimap2. Works without reads.
 
-For INV validation, the reference-based mode reverse-complements the candidate region and aligns it back to the reference. A reverse-strand alignment with high identity and MAPQ indicates a true inversion.
+For INV validation, the reference-based mode reverse-complements the candidate region and aligns it back to the reference. A reverse-strand alignment indicates a true inversion.
+
+**Status: heuristic thresholds, not yet calibrated against the full truth set.**
+
+The current INV verdict thresholds were set from a small simulation study (11 simulated inversions) and the CEN5 centromeric inversion. They are reasonable defaults but have not been validated against the complete synthetic truth set or the LAR truth set. Treat backtrack verdicts as advisory, not authoritative.
+
+Current thresholds:
 
 CONFIRMED: reverse strand + identity >= 0.95 + MAPQ >= 50
 PARTIAL: reverse strand + identity >= 0.80
@@ -66,9 +72,9 @@ UNCALLABLE: SV smaller than 500 bp
 
 This fixes the double-matching bug in the original `run_calibration.py` evaluator, where two consensus calls near the same truth SV could both be counted as true positives.
 
-## Key results
+## Validation results
 
-Current synthetic benchmark results across three replicates:
+### Synthetic benchmark (3 replicates)
 
 | Metric | Value |
 |--------|-------|
@@ -87,6 +93,34 @@ Per-type recall:
 | DEL | 79.5% |
 | DUP | 44.4% |
 | INV | 60.3% |
+
+### Self-alignment specificity
+
+| Strain | TRIPLE-tier FDR (v1.1) | 95% CI |
+|--------|------------------------|--------|
+| CICC-1445 | 0.8% (1/130) | 0.1–4.2% |
+| SC5314 | 0.0% (0/200) | 0.0–1.9% |
+
+### LAR truth set (180 SVs, 12 strains)
+
+| Category | n | Confirmed (strict) | Raw rate | Excl. technical |
+|----------|---|-------------------|----------|-----------------|
+| Within-species | 151 | 78 | 51.7% | 69.6% |
+| Self-alignment | 20 | 10 | 50.0% | 76.9% |
+| Oggenfuss external | 7 | 5 | 71.4% | — |
+
+### Spike-in benchmark
+
+| Metric | Value |
+|--------|-------|
+| Recall | 76.2% (16/21) |
+
+## Known limitations
+
+- **DUP recall is low (44.4%)**. DUPs are the hardest SV type for haploid depth-based scoring. Treat DUP calls with more caution than DEL calls.
+- **INV calls under 2 kb are unreliable**. The backtrack layer flags INVs below 500 bp as uncallable. INV detection in general remains challenging (60.3% recall).
+- **Backtrack thresholds are heuristic**, not empirically calibrated. See the Backtrack section above.
+- **The 5× coverage flag was heuristic**. It has since been replaced by the Li (2014) max-depth filter. See the v1.1 audit for details.
 
 ## Installation
 

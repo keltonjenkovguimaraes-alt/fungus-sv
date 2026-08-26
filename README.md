@@ -1,5 +1,5 @@
 # FUNGUS-SV
-
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21402263.svg)](https://doi.org/10.5281/zenodo.21402263)
 Structural variant detection and validation for haploid fungal genomes using PacBio HiFi reads.
 
 ## Version

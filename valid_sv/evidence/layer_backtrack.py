@@ -175,7 +175,20 @@ def _align_to_reference(ref_path: str, query_seq: str, query_name: str = "query"
         query_path = f.name
 
     # Run minimap2
-    cmd = f"/home/kelto/miniforge3/envs/sv_align/bin/minimap2 -a --eqx {ref_path} {query_path} 2>/dev/null"
+    # Use shutil.which to find minimap2 dynamically (works both locally and in Docker)
+    import shutil
+    minimap2_bin = shutil.which("minimap2")
+    if not minimap2_bin:
+        # Fallback: try common conda env paths
+        for candidate in ["/opt/conda/envs/sv_align/bin/minimap2",
+                          "/opt/conda/bin/minimap2",
+                          "/usr/local/bin/minimap2"]:
+            if os.path.exists(candidate):
+                minimap2_bin = candidate
+                break
+    if not minimap2_bin:
+        raise RuntimeError("minimap2 not found. Install it or add to PATH.")
+    cmd = f"{minimap2_bin} -a --eqx {ref_path} {query_path} 2>/dev/null"
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
     os.unlink(query_path)
 
